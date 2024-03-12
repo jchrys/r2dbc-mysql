@@ -37,8 +37,6 @@ import reactor.core.publisher.SynchronousSink;
 import reactor.test.StepVerifier;
 
 import java.time.Duration;
-import java.util.ArrayList;
-import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import static org.assertj.core.api.Assertions.assertThat;

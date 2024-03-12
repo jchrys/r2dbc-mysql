@@ -27,8 +27,8 @@ import java.util.StringJoiner;
 import static io.asyncer.r2dbc.mysql.internal.util.AssertUtils.requireNonNull;
 
 /**
- * An implementation of {@link MySqlBatch} for executing a collection of statements in a batch against the
- * MySQL database.
+ * An implementation of {@link MySqlBatch} for executing a collection of statements in a batch against the MySQL
+ * database.
  */
 final class MySqlBatchingBatch implements MySqlBatch {
 

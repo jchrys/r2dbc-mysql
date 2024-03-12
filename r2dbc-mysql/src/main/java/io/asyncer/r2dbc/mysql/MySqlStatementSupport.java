@@ -46,12 +46,11 @@ abstract class MySqlStatementSupport implements MySqlStatement {
     public final MySqlStatement returnGeneratedValues(String... columns) {
         requireNonNull(columns, "columns must not be null");
 
-        ConnectionContext context = client.getContext();
         int len = columns.length;
 
         if (len == 0) {
             this.generatedColumns = InternalArrays.EMPTY_STRINGS;
-        } else if (len == 1 || supportReturning(context)) {
+        } else if (len == 1 || supportReturning(client.getContext())) {
             String[] result = new String[len];
 
             for (int i = 0; i < len; ++i) {
@@ -61,7 +60,7 @@ abstract class MySqlStatementSupport implements MySqlStatement {
 
             this.generatedColumns = result;
         } else {
-            String db = context.isMariaDb() ? "MariaDB 10.5.0 or below" : "MySQL";
+            String db = client.getContext().isMariaDb() ? "MariaDB 10.5.0 or below" : "MySQL";
             throw new IllegalArgumentException(db + " can have only one column");
         }
 

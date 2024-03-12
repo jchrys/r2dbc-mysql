@@ -19,19 +19,11 @@ package io.asyncer.r2dbc.mysql;
 import io.asyncer.r2dbc.mysql.api.MySqlConnection;
 import io.asyncer.r2dbc.mysql.cache.Caches;
 import io.asyncer.r2dbc.mysql.cache.QueryCache;
-import io.asyncer.r2dbc.mysql.client.Client;
-import io.asyncer.r2dbc.mysql.internal.util.StringUtils;
-import io.netty.channel.unix.DomainSocketAddress;
 import io.r2dbc.spi.ConnectionFactory;
 import io.r2dbc.spi.ConnectionFactoryMetadata;
 import org.jetbrains.annotations.Nullable;
-import org.reactivestreams.Publisher;
 import reactor.core.publisher.Mono;
 
-import java.net.InetSocketAddress;
-import java.net.SocketAddress;
-import java.time.ZoneId;
-import java.util.Objects;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Supplier;
 
@@ -69,127 +61,28 @@ public final class MySqlConnectionFactory implements ConnectionFactory {
 
         LazyQueryCache queryCache = new LazyQueryCache(configuration.getQueryCacheSize());
 
-        return new MySqlConnectionFactory(Mono.defer(() -> {
-            MySqlSslConfiguration ssl;
-            SocketAddress address;
+        return new MySqlConnectionFactory(Mono.defer(() -> configuration.getSocket()
+            .strategy(configuration)
+            .connect()
+            .flatMap(client -> {
+                String sessionDb = configuration.isCreateDatabaseIfNotExist() ? configuration.getDatabase() : "";
 
-            if (configuration.isHost()) {
-                ssl = configuration.getSsl();
-                address = InetSocketAddress.createUnresolved(configuration.getDomain(),
-                    configuration.getPort());
-            } else {
-                ssl = MySqlSslConfiguration.disabled();
-                address = new DomainSocketAddress(configuration.getDomain());
-            }
-
-            String user = configuration.getUser();
-            CharSequence password = configuration.getPassword();
-            Publisher<String> passwordPublisher = configuration.getPasswordPublisher();
-
-            if (Objects.nonNull(passwordPublisher)) {
-                return Mono.from(passwordPublisher).flatMap(token -> getMySqlConnection(
-                    configuration, ssl,
-                    queryCache,
-                    address,
-                    user,
-                    token
-                ));
-            }
-
-            return getMySqlConnection(
-                configuration, ssl,
-                queryCache,
-                address,
-                user,
-                password
-            );
-        }));
-    }
-
-    /**
-     * Gets an initialized {@link MySqlConnection} from authentication credential and configurations.
-     * <p>
-     * It contains following steps:
-     * <ol><li>Create connection context</li>
-     * <li>Connect to MySQL server with TCP or Unix Domain Socket</li>
-     * <li>Handshake/login and init handshake states</li>
-     * <li>Init session states</li></ol>
-     *
-     * @param configuration the connection configuration.
-     * @param ssl           the SSL configuration.
-     * @param queryCache    lazy-init query cache, it is shared among all connections from the same factory.
-     * @param address       TCP or Unix Domain Socket address.
-     * @param user          the user of the authentication.
-     * @param password      the password of the authentication.
-     * @return a {@link MySqlConnection}.
-     */
-    private static Mono<MySqlConnection> getMySqlConnection(
-        final MySqlConnectionConfiguration configuration,
-        final MySqlSslConfiguration ssl,
-        final LazyQueryCache queryCache,
-        final SocketAddress address,
-        final String user,
-        @Nullable final CharSequence password
-    ) {
-        return Mono.fromSupplier(() -> {
-            ZoneId connectionTimeZone = retrieveZoneId(configuration.getConnectionTimeZone());
-            return new ConnectionContext(
-                configuration.getZeroDateOption(),
-                configuration.getLoadLocalInfilePath(),
-                configuration.getLocalInfileBufferSize(),
-                configuration.isPreserveInstants(),
-                connectionTimeZone
-            );
-        }).flatMap(context -> Client.connect(
-            ssl,
-            address,
-            configuration.isTcpKeepAlive(),
-            configuration.isTcpNoDelay(),
-            context,
-            configuration.getConnectTimeout(),
-            configuration.getLoopResources()
-        )).flatMap(client -> {
-            // Lazy init database after handshake/login
-            boolean deferDatabase = configuration.isCreateDatabaseIfNotExist();
-            String database = configuration.getDatabase();
-            String loginDb = deferDatabase ? "" : database;
-            String sessionDb = deferDatabase ? database : "";
-
-            return InitFlow.initHandshake(
-                client,
-                ssl.getSslMode(),
-                loginDb,
-                user,
-                password,
-                configuration.getCompressionAlgorithms(),
-                configuration.getZstdCompressionLevel()
-            ).then(InitFlow.initSession(
-                client,
-                sessionDb,
-                configuration.getPrepareCacheSize(),
-                configuration.getSessionVariables(),
-                configuration.isForceConnectionTimeZoneToSession(),
-                configuration.getLockWaitTimeout(),
-                configuration.getStatementTimeout(),
-                configuration.getExtensions()
-            )).map(codecs -> new MySqlSimpleConnection(
-                client,
-                codecs,
-                queryCache.get(),
-                configuration.getPreferPrepareStatement()
-            )).onErrorResume(e -> client.forceClose().then(Mono.error(e)));
-        });
-    }
-
-    @Nullable
-    private static ZoneId retrieveZoneId(String timeZone) {
-        if ("LOCAL".equalsIgnoreCase(timeZone)) {
-            return ZoneId.systemDefault().normalized();
-        } else if ("SERVER".equalsIgnoreCase(timeZone)) {
-            return null;
-        }
-
-        return StringUtils.parseZoneId(timeZone);
+                return InitFlow.initSession(
+                    client,
+                    sessionDb,
+                    configuration.getPrepareCacheSize(),
+                    configuration.getSessionVariables(),
+                    configuration.isForceConnectionTimeZoneToSession(),
+                    configuration.getLockWaitTimeout(),
+                    configuration.getStatementTimeout(),
+                    configuration.getExtensions()
+                ).map(codecs -> new MySqlSimpleConnection(
+                    client,
+                    codecs,
+                    queryCache.get(),
+                    configuration.getPreferPrepareStatement()
+                )).onErrorResume(e -> client.close().then(Mono.error(e)));
+            })));
     }
 
     private static final class LazyQueryCache implements Supplier<QueryCache> {

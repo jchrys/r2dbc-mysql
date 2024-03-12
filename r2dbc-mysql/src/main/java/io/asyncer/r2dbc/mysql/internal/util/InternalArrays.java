@@ -252,7 +252,7 @@ final class ArrList<E> extends AbstractList<E> implements List<E>, RandomAccess 
             return (T[]) Arrays.copyOf(source, source.length, a.getClass());
         }
 
-        System.arraycopy(source, 0, a, 0, this.a.length);
+        System.arraycopy(source, 0, a, 0, source.length);
 
         if (a.length > source.length) {
             a[source.length] = null;

@@ -17,13 +17,17 @@
 package io.asyncer.r2dbc.mysql;
 
 import io.asyncer.r2dbc.mysql.constant.CompressionAlgorithm;
+import io.asyncer.r2dbc.mysql.constant.HaProtocol;
+import io.asyncer.r2dbc.mysql.constant.ProtocolDriver;
 import io.asyncer.r2dbc.mysql.constant.SslMode;
 import io.asyncer.r2dbc.mysql.constant.ZeroDateOption;
 import io.asyncer.r2dbc.mysql.extension.Extension;
 import io.asyncer.r2dbc.mysql.internal.util.InternalArrays;
+import io.asyncer.r2dbc.mysql.internal.util.StringUtils;
 import io.netty.handler.ssl.SslContextBuilder;
 import org.jetbrains.annotations.Nullable;
 import org.reactivestreams.Publisher;
+import reactor.core.publisher.Mono;
 import reactor.netty.resources.LoopResources;
 import reactor.netty.tcp.TcpResources;
 
@@ -38,46 +42,27 @@ import java.util.Collections;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.ServiceLoader;
 import java.util.Set;
 import java.util.function.Function;
 import java.util.function.Predicate;
+import java.util.function.Supplier;
 
 import static io.asyncer.r2dbc.mysql.internal.util.AssertUtils.require;
 import static io.asyncer.r2dbc.mysql.internal.util.AssertUtils.requireNonEmpty;
 import static io.asyncer.r2dbc.mysql.internal.util.AssertUtils.requireNonNull;
-import static io.asyncer.r2dbc.mysql.internal.util.InternalArrays.EMPTY_STRINGS;
 
 /**
  * A configuration of MySQL connection.
  */
 public final class MySqlConnectionConfiguration {
 
-    /**
-     * Default MySQL port.
-     */
-    private static final int DEFAULT_PORT = 3306;
+    private final SocketClientConfiguration client;
 
-    /**
-     * {@code true} if {@link #domain} is hostname, otherwise {@link #domain} is unix domain socket path.
-     */
-    private final boolean isHost;
-
-    /**
-     * Domain of connecting, may be hostname or unix domain socket path.
-     */
-    private final String domain;
-
-    private final int port;
+    private final SocketConfiguration socket;
 
     private final MySqlSslConfiguration ssl;
-
-    private final boolean tcpKeepAlive;
-
-    private final boolean tcpNoDelay;
-
-    @Nullable
-    private final Duration connectTimeout;
 
     private final boolean preserveInstants;
 
@@ -87,10 +72,9 @@ public final class MySqlConnectionConfiguration {
 
     private final ZeroDateOption zeroDateOption;
 
-    private final String user;
+    private final Mono<String> user;
 
-    @Nullable
-    private final CharSequence password;
+    private final Mono<Optional<CharSequence>> password;
 
     private final String database;
 
@@ -120,42 +104,35 @@ public final class MySqlConnectionConfiguration {
 
     private final int zstdCompressionLevel;
 
-    private final LoopResources loopResources;
-
     private final Extensions extensions;
 
-    @Nullable
-    private final Publisher<String> passwordPublisher;
-
     private MySqlConnectionConfiguration(
-        boolean isHost, String domain, int port, MySqlSslConfiguration ssl,
-        boolean tcpKeepAlive, boolean tcpNoDelay, @Nullable Duration connectTimeout,
+        SocketClientConfiguration client,
+        SocketConfiguration socket,
+        MySqlSslConfiguration ssl,
         ZeroDateOption zeroDateOption,
         boolean preserveInstants,
         String connectionTimeZone,
         boolean forceConnectionTimeZoneToSession,
-        String user, @Nullable CharSequence password, @Nullable String database,
+        Mono<String> user,
+        Mono<Optional<CharSequence>> password,
+        @Nullable String database,
         boolean createDatabaseIfNotExist, @Nullable Predicate<String> preferPrepareStatement,
         List<String> sessionVariables, @Nullable Duration lockWaitTimeout, @Nullable Duration statementTimeout,
         @Nullable Path loadLocalInfilePath, int localInfileBufferSize,
         int queryCacheSize, int prepareCacheSize,
         Set<CompressionAlgorithm> compressionAlgorithms, int zstdCompressionLevel,
-        @Nullable LoopResources loopResources,
-        Extensions extensions, @Nullable Publisher<String> passwordPublisher
+        Extensions extensions
     ) {
-        this.isHost = isHost;
-        this.domain = domain;
-        this.port = port;
-        this.tcpKeepAlive = tcpKeepAlive;
-        this.tcpNoDelay = tcpNoDelay;
-        this.connectTimeout = connectTimeout;
-        this.ssl = ssl;
+        this.client = requireNonNull(client, "client must not be null");
+        this.socket = requireNonNull(socket, "socket must not be null");
+        this.ssl = requireNonNull(ssl, "ssl must not be null");
         this.preserveInstants = preserveInstants;
         this.connectionTimeZone = requireNonNull(connectionTimeZone, "connectionTimeZone must not be null");
         this.forceConnectionTimeZoneToSession = forceConnectionTimeZoneToSession;
         this.zeroDateOption = requireNonNull(zeroDateOption, "zeroDateOption must not be null");
         this.user = requireNonNull(user, "user must not be null");
-        this.password = password;
+        this.password = requireNonNull(password, "password must not be null");
         this.database = database == null || database.isEmpty() ? "" : database;
         this.createDatabaseIfNotExist = createDatabaseIfNotExist;
         this.preferPrepareStatement = preferPrepareStatement;
@@ -168,9 +145,7 @@ public final class MySqlConnectionConfiguration {
         this.prepareCacheSize = prepareCacheSize;
         this.compressionAlgorithms = compressionAlgorithms;
         this.zstdCompressionLevel = zstdCompressionLevel;
-        this.loopResources = loopResources == null ? TcpResources.get() : loopResources;
         this.extensions = extensions;
-        this.passwordPublisher = passwordPublisher;
     }
 
     /**
@@ -182,33 +157,16 @@ public final class MySqlConnectionConfiguration {
         return new Builder();
     }
 
-    boolean isHost() {
-        return isHost;
+    SocketClientConfiguration getClient() {
+        return client;
     }
 
-    String getDomain() {
-        return domain;
-    }
-
-    int getPort() {
-        return port;
-    }
-
-    @Nullable
-    Duration getConnectTimeout() {
-        return connectTimeout;
+    SocketConfiguration getSocket() {
+        return socket;
     }
 
     MySqlSslConfiguration getSsl() {
         return ssl;
-    }
-
-    boolean isTcpKeepAlive() {
-        return this.tcpKeepAlive;
-    }
-
-    boolean isTcpNoDelay() {
-        return this.tcpNoDelay;
     }
 
     ZeroDateOption getZeroDateOption() {
@@ -223,17 +181,25 @@ public final class MySqlConnectionConfiguration {
         return connectionTimeZone;
     }
 
+    @Nullable
+    ZoneId retrieveConnectionZoneId() {
+        String timeZone = this.connectionTimeZone;
+
+        if ("LOCAL".equalsIgnoreCase(timeZone)) {
+            return ZoneId.systemDefault().normalized();
+        } else if ("SERVER".equalsIgnoreCase(timeZone)) {
+            return null;
+        }
+
+        return StringUtils.parseZoneId(timeZone);
+    }
+
     boolean isForceConnectionTimeZoneToSession() {
         return forceConnectionTimeZoneToSession;
     }
 
-    String getUser() {
-        return user;
-    }
-
-    @Nullable
-    CharSequence getPassword() {
-        return password;
+    Mono<Credential> getCredential() {
+        return Mono.zip(user, password, (u, p) -> new Credential(u, p.orElse(null)));
     }
 
     String getDatabase() {
@@ -288,17 +254,8 @@ public final class MySqlConnectionConfiguration {
         return zstdCompressionLevel;
     }
 
-    LoopResources getLoopResources() {
-        return loopResources;
-    }
-
     Extensions getExtensions() {
         return extensions;
-    }
-
-    @Nullable
-    Publisher<String> getPasswordPublisher() {
-        return passwordPublisher;
     }
 
     @Override
@@ -309,20 +266,18 @@ public final class MySqlConnectionConfiguration {
         if (!(o instanceof MySqlConnectionConfiguration)) {
             return false;
         }
+
         MySqlConnectionConfiguration that = (MySqlConnectionConfiguration) o;
-        return isHost == that.isHost &&
-            domain.equals(that.domain) &&
-            port == that.port &&
+
+        return client.equals(that.client) &&
+            socket.equals(that.socket) &&
             ssl.equals(that.ssl) &&
-            tcpKeepAlive == that.tcpKeepAlive &&
-            tcpNoDelay == that.tcpNoDelay &&
-            Objects.equals(connectTimeout, that.connectTimeout) &&
             preserveInstants == that.preserveInstants &&
-            Objects.equals(connectionTimeZone, that.connectionTimeZone) &&
+            connectionTimeZone.equals(that.connectionTimeZone) &&
             forceConnectionTimeZoneToSession == that.forceConnectionTimeZoneToSession &&
             zeroDateOption == that.zeroDateOption &&
             user.equals(that.user) &&
-            Objects.equals(password, that.password) &&
+            password.equals(that.password) &&
             database.equals(that.database) &&
             createDatabaseIfNotExist == that.createDatabaseIfNotExist &&
             Objects.equals(preferPrepareStatement, that.preferPrepareStatement) &&
@@ -335,16 +290,21 @@ public final class MySqlConnectionConfiguration {
             prepareCacheSize == that.prepareCacheSize &&
             compressionAlgorithms.equals(that.compressionAlgorithms) &&
             zstdCompressionLevel == that.zstdCompressionLevel &&
-            Objects.equals(loopResources, that.loopResources) &&
-            extensions.equals(that.extensions) &&
-            Objects.equals(passwordPublisher, that.passwordPublisher);
+            extensions.equals(that.extensions);
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(isHost, domain, port, ssl, tcpKeepAlive, tcpNoDelay, connectTimeout,
-            preserveInstants, connectionTimeZone, forceConnectionTimeZoneToSession,
-            zeroDateOption, user, password, database, createDatabaseIfNotExist,
+        return Objects.hash(
+            client,
+            socket, ssl,
+            preserveInstants,
+            connectionTimeZone,
+            forceConnectionTimeZoneToSession,
+            zeroDateOption,
+            user, password,
+            database,
+            createDatabaseIfNotExist,
             preferPrepareStatement,
             sessionVariables,
             lockWaitTimeout,
@@ -352,40 +312,22 @@ public final class MySqlConnectionConfiguration {
             loadLocalInfilePath, localInfileBufferSize,
             queryCacheSize, prepareCacheSize,
             compressionAlgorithms, zstdCompressionLevel,
-            loopResources, extensions, passwordPublisher);
+            extensions);
     }
 
     @Override
     public String toString() {
-        if (isHost) {
-            return "MySqlConnectionConfiguration{host='" + domain + "', port=" + port + ", ssl=" + ssl +
-                ", tcpNoDelay=" + tcpNoDelay + ", tcpKeepAlive=" + tcpKeepAlive +
-                ", connectTimeout=" + connectTimeout +
-                ", preserveInstants=" + preserveInstants +
-                ", connectionTimeZone=" + connectionTimeZone +
-                ", forceConnectionTimeZoneToSession=" + forceConnectionTimeZoneToSession +
-                ", zeroDateOption=" + zeroDateOption + ", user='" + user + "', password=" + password +
-                ", database='" + database + "', createDatabaseIfNotExist=" + createDatabaseIfNotExist +
-                ", preferPrepareStatement=" + preferPrepareStatement +
-                ", sessionVariables=" + sessionVariables +
-                ", lockWaitTimeout=" + lockWaitTimeout +
-                ", statementTimeout=" + statementTimeout +
-                ", loadLocalInfilePath=" + loadLocalInfilePath +
-                ", localInfileBufferSize=" + localInfileBufferSize +
-                ", queryCacheSize=" + queryCacheSize + ", prepareCacheSize=" + prepareCacheSize +
-                ", compressionAlgorithms=" + compressionAlgorithms +
-                ", zstdCompressionLevel=" + zstdCompressionLevel +
-                ", loopResources=" + loopResources +
-                ", extensions=" + extensions + ", passwordPublisher=" + passwordPublisher + '}';
-        }
-
-        return "MySqlConnectionConfiguration{unixSocket='" + domain +
-            "', connectTimeout=" + connectTimeout +
+        return "MySqlConnectionConfiguration{client=" + client +
+            ", socket=" + socket +
+            ", ssl=" + ssl +
             ", preserveInstants=" + preserveInstants +
-            ", connectionTimeZone=" + connectionTimeZone +
+            ", connectionTimeZone='" + connectionTimeZone + '\'' +
             ", forceConnectionTimeZoneToSession=" + forceConnectionTimeZoneToSession +
-            ", zeroDateOption=" + zeroDateOption + ", user='" + user + "', password=" + password +
-            ", database='" + database + "', createDatabaseIfNotExist=" + createDatabaseIfNotExist +
+            ", zeroDateOption=" + zeroDateOption +
+            ", user=" + user +
+            ", password=REDACTED" +
+            ", database='" + database + '\'' +
+            ", createDatabaseIfNotExist=" + createDatabaseIfNotExist +
             ", preferPrepareStatement=" + preferPrepareStatement +
             ", sessionVariables=" + sessionVariables +
             ", lockWaitTimeout=" + lockWaitTimeout +
@@ -396,8 +338,8 @@ public final class MySqlConnectionConfiguration {
             ", prepareCacheSize=" + prepareCacheSize +
             ", compressionAlgorithms=" + compressionAlgorithms +
             ", zstdCompressionLevel=" + zstdCompressionLevel +
-            ", loopResources=" + loopResources +
-            ", extensions=" + extensions + ", passwordPublisher=" + passwordPublisher + '}';
+            ", extensions=" + extensions +
+            '}';
     }
 
     /**
@@ -405,24 +347,26 @@ public final class MySqlConnectionConfiguration {
      */
     public static final class Builder {
 
+        private final SocketClientConfiguration.Builder client = new SocketClientConfiguration.Builder();
+
+        @Nullable
+        private TcpSocketConfiguration.Builder tcpSocket;
+
+        @Nullable
+        private UnixDomainSocketConfiguration.Builder unixSocket;
+
+        private final MySqlSslConfiguration.Builder ssl = new MySqlSslConfiguration.Builder();
+
         @Nullable
         private String database;
 
         private boolean createDatabaseIfNotExist;
 
-        private boolean isHost = true;
-
-        private String domain;
+        @Nullable
+        private Mono<String> user;
 
         @Nullable
-        private CharSequence password;
-
-        private int port = DEFAULT_PORT;
-
-        @Nullable
-        private Duration connectTimeout;
-
-        private String user;
+        private Mono<CharSequence> password;
 
         private ZeroDateOption zeroDateOption = ZeroDateOption.USE_NULL;
 
@@ -431,33 +375,6 @@ public final class MySqlConnectionConfiguration {
         private String connectionTimeZone = "LOCAL";
 
         private boolean forceConnectionTimeZoneToSession;
-
-        @Nullable
-        private SslMode sslMode;
-
-        private String[] tlsVersion = EMPTY_STRINGS;
-
-        @Nullable
-        private HostnameVerifier sslHostnameVerifier;
-
-        @Nullable
-        private String sslCa;
-
-        @Nullable
-        private String sslKey;
-
-        @Nullable
-        private CharSequence sslKeyPassword;
-
-        @Nullable
-        private String sslCert;
-
-        @Nullable
-        private Function<SslContextBuilder, SslContextBuilder> sslContextBuilderCustomizer;
-
-        private boolean tcpKeepAlive;
-
-        private boolean tcpNoDelay;
 
         @Nullable
         private Predicate<String> preferPrepareStatement;
@@ -484,15 +401,9 @@ public final class MySqlConnectionConfiguration {
 
         private int zstdCompressionLevel = 3;
 
-        @Nullable
-        private LoopResources loopResources;
-
         private boolean autodetectExtensions = true;
 
         private final List<Extension> extensions = new ArrayList<>();
-
-        @Nullable
-        private Publisher<String> passwordPublisher;
 
         /**
          * Builds an immutable {@link MySqlConnectionConfiguration} with current options.
@@ -500,42 +411,55 @@ public final class MySqlConnectionConfiguration {
          * @return the {@link MySqlConnectionConfiguration}.
          */
         public MySqlConnectionConfiguration build() {
-            SslMode sslMode = requireSslMode();
+            Mono<String> user = requireNonNull(this.user, "User must be configured");
+            Mono<CharSequence> auth = this.password;
+            Mono<Optional<CharSequence>> password = auth == null ? Mono.just(Optional.empty()) : auth.singleOptional();
+            SocketConfiguration socket;
+            boolean preferredSsl;
 
-            if (isHost) {
-                requireNonNull(domain, "host must not be null when using TCP socket");
-                require((sslCert == null && sslKey == null) || (sslCert != null && sslKey != null),
-                    "sslCert and sslKey must be both null or both non-null");
+            if (unixSocket == null) {
+                socket = requireNonNull(tcpSocket, "Connection must be either TCP/SSL or Unix Domain Socket").build();
+                preferredSsl = true;
             } else {
-                requireNonNull(domain, "unixSocket must not be null when using unix domain socket");
-                require(!sslMode.startSsl(), "sslMode must be disabled when using unix domain socket");
+                // Since 1.2.0, we support SSL over Unix Domain Socket, default SSL mode is DISABLED.
+                // But, if a Unix Domain Socket can be listened to by someone, this indicates that the system itself
+                // has been compromised, and enabling SSL does not improve the security of the connection.
+                socket = unixSocket.build();
+                preferredSsl = false;
             }
 
             int prepareCacheSize = preferPrepareStatement == null ? 0 : this.prepareCacheSize;
 
-            MySqlSslConfiguration ssl = MySqlSslConfiguration.create(sslMode, tlsVersion, sslHostnameVerifier,
-                sslCa, sslKey, sslKeyPassword, sslCert, sslContextBuilderCustomizer);
-            return new MySqlConnectionConfiguration(isHost, domain, port, ssl, tcpKeepAlive, tcpNoDelay,
-                connectTimeout, zeroDateOption,
+            return new MySqlConnectionConfiguration(
+                client.build(),
+                socket,
+                ssl.build(preferredSsl),
+                zeroDateOption,
                 preserveInstants,
                 connectionTimeZone,
                 forceConnectionTimeZoneToSession,
-                user, password, database,
-                createDatabaseIfNotExist, preferPrepareStatement,
+                user.single(),
+                password,
+                database,
+                createDatabaseIfNotExist,
+                preferPrepareStatement,
                 sessionVariables,
                 lockWaitTimeout,
                 statementTimeout,
                 loadLocalInfilePath,
-                localInfileBufferSize, queryCacheSize, prepareCacheSize,
-                compressionAlgorithms, zstdCompressionLevel, loopResources,
-                Extensions.from(extensions, autodetectExtensions), passwordPublisher);
+                localInfileBufferSize,
+                queryCacheSize,
+                prepareCacheSize,
+                compressionAlgorithms,
+                zstdCompressionLevel,
+                Extensions.from(extensions, autodetectExtensions));
         }
 
         /**
          * Configures the database.  Default no database.
          *
          * @param database the database, or {@code null} if no database want to be login.
-         * @return this {@link Builder}.
+         * @return {@link Builder this}
          * @since 0.8.1
          */
         public Builder database(@Nullable String database) {
@@ -548,7 +472,7 @@ public final class MySqlConnectionConfiguration {
          * {@code false}.
          *
          * @param enabled to discover and register extensions.
-         * @return this {@link Builder}.
+         * @return {@link Builder this}
          * @since 1.0.6
          */
         public Builder createDatabaseIfNotExist(boolean enabled) {
@@ -558,58 +482,121 @@ public final class MySqlConnectionConfiguration {
 
         /**
          * Configures the Unix Domain Socket to connect to.
+         * <p>
+         * Note: It will override all TCP and SSL configurations if configured.
          *
-         * @param unixSocket the socket file path.
-         * @return this {@link Builder}.
-         * @throws IllegalArgumentException if {@code unixSocket} is {@code null}.
+         * @param path the socket file path.
+         * @return {@link Builder this}
+         * @throws IllegalArgumentException if {@code path} is {@code null} or empty.
          * @since 0.8.1
          */
-        public Builder unixSocket(String unixSocket) {
-            this.domain = requireNonNull(unixSocket, "unixSocket must not be null");
-            this.isHost = false;
+        public Builder unixSocket(String path) {
+            requireNonEmpty(path, "path must not be null");
+
+            requireUnixSocket().path(path);
             return this;
         }
 
         /**
-         * Configures the host.
+         * Configures the single-host.
+         * <p>
+         * Note: Used only if the {@link #unixSocket(String)} and {@link #addHost multiple hosts} is not configured.
          *
          * @param host the host.
-         * @return this {@link Builder}.
-         * @throws IllegalArgumentException if {@code host} is {@code null}.
+         * @return {@link Builder this}
+         * @throws IllegalArgumentException if {@code host} is {@code null} or empty.
          * @since 0.8.1
          */
         public Builder host(String host) {
-            this.domain = requireNonNull(host, "host must not be null");
-            this.isHost = true;
+            requireNonEmpty(host, "host must not be empty");
+
+            requireTcpSocket().host(host);
             return this;
         }
 
         /**
-         * Configures the password.  Default login without password.
+         * Configures the port of {@link #host(String)}.  Defaults to {@code 3306}.
          * <p>
-         * Note: for memory security, should not use intern {@link String} for password.
-         *
-         * @param password the password, or {@code null} when user has no password.
-         * @return this {@link Builder}.
-         * @since 0.8.1
-         */
-        public Builder password(@Nullable CharSequence password) {
-            this.password = password;
-            return this;
-        }
-
-        /**
-         * Configures the port.  Defaults to {@code 3306}.
+         * Note: Used only if the {@link #unixSocket(String)} and {@link #addHost multiple hosts} is not configured.
          *
          * @param port the port.
-         * @return this {@link Builder}.
+         * @return {@link Builder this}
          * @throws IllegalArgumentException if the {@code port} is negative or bigger than {@literal 65535}.
          * @since 0.8.1
          */
         public Builder port(int port) {
             require(port >= 0 && port <= 0xFFFF, "port must be between 0 and 65535");
 
-            this.port = port;
+            requireTcpSocket().port(port);
+            return this;
+        }
+
+        /**
+         * Adds a host with default port 3306 to the list of multiple hosts to connect to.
+         * <p>
+         * Note: Used only if the {@link #unixSocket(String)} and {@link #host single host} is not configured.
+         *
+         * @param host the host to add.
+         * @return {@link Builder this}
+         * @throws IllegalArgumentException if {@code host} is {@code null} or empty.
+         * @since 1.2.0
+         */
+        public Builder addHost(String host) {
+            requireNonEmpty(host, "host must not be empty");
+
+            requireTcpSocket().addHost(host);
+            return this;
+        }
+
+        /**
+         * Adds a host to the list of multiple hosts to connect to.
+         * <p>
+         * Note: Used only if the {@link #unixSocket(String)} and {@link #host single host} is not configured.
+         *
+         * @param host the host to add.
+         * @param port the port of the host.
+         * @return {@link Builder this}
+         * @throws IllegalArgumentException if the {@code host} is empty or the {@code port} is not between 0 and
+         *                                  65535.
+         * @since 1.2.0
+         */
+        public Builder addHost(String host, int port) {
+            requireNonEmpty(host, "host must not be empty");
+            require(port >= 0 && port <= 0xFFFF, "port must be between 0 and 65535");
+
+            requireTcpSocket().addHost(host, port);
+            return this;
+        }
+
+        /**
+         * Configures the failover and high availability protocol driver.  Default to {@link ProtocolDriver#MYSQL}. Used
+         * only if the {@link #unixSocket(String)} is not configured.
+         *
+         * @param driver the protocol driver.
+         * @return {@link Builder this}
+         * @throws IllegalArgumentException if {@code driver} is {@code null}.
+         * @since 1.2.0
+         */
+        public Builder driver(ProtocolDriver driver) {
+            requireNonNull(driver, "driver must not be null");
+
+            requireTcpSocket().driver(driver);
+            return this;
+        }
+
+        /**
+         * Configures the failover and high availability protocol.  Default to {@link HaProtocol#DEFAULT}. Used only if
+         * the {@link #unixSocket(String)} is not configured.
+         *
+         * @param protocol the failover and high availability protocol.
+         * @return {@link Builder this}
+         * @throws IllegalArgumentException if {@code protocol} is {@code null}.
+         * @since 1.2.0
+         */
+        public Builder protocol(HaProtocol protocol) {
+            requireNonNull(protocol, "protocol must not be null");
+
+            requireTcpSocket().protocol(protocol);
             return this;
         }
 
@@ -617,11 +604,11 @@ public final class MySqlConnectionConfiguration {
          * Configures the connection timeout.  Default no timeout.
          *
          * @param connectTimeout the connection timeout, or {@code null} if no timeout.
-         * @return this {@link Builder}.
+         * @return {@link Builder this}
          * @since 0.8.1
          */
         public Builder connectTimeout(@Nullable Duration connectTimeout) {
-            this.connectTimeout = connectTimeout;
+            this.client.connectTimeout(connectTimeout);
             return this;
         }
 
@@ -629,20 +616,52 @@ public final class MySqlConnectionConfiguration {
          * Configures the user for login the database.
          *
          * @param user the user.
-         * @return this {@link Builder}.
-         * @throws IllegalArgumentException if {@code user} is {@code null}.
+         * @return {@link Builder this}
+         * @throws IllegalArgumentException if {@code user} is {@code null} or empty.
          * @since 0.8.2
          */
         public Builder user(String user) {
-            this.user = requireNonNull(user, "user must not be null");
+            requireNonEmpty(user, "user must not be empty");
+
+            this.user = Mono.just(user);
             return this;
         }
 
         /**
-         * An alias of {@link #user(String)}.
+         * Configures the user for login the database.
+         *
+         * @param user a {@link Supplier} to retrieve user.
+         * @return {@link Builder this}
+         * @throws IllegalArgumentException if {@code user} is {@code null}.
+         * @since 1.2.0
+         */
+        public Builder user(Supplier<String> user) {
+            requireNonNull(user, "user must not be null");
+
+            this.user = Mono.fromSupplier(user);
+            return this;
+        }
+
+        /**
+         * Configures the user for login the database.
+         *
+         * @param user a {@link Publisher} to retrieve user.
+         * @return {@link Builder this}
+         * @throws IllegalArgumentException if {@code user} is {@code null}.
+         * @since 1.2.0
+         */
+        public Builder user(Publisher<String> user) {
+            requireNonNull(user, "user must not be null");
+
+            this.user = Mono.from(user);
+            return this;
+        }
+
+        /**
+         * Configures the user for login the database. Since 0.8.2, it is an alias of {@link #user(String)}.
          *
          * @param user the user.
-         * @return this {@link Builder}.
+         * @return {@link Builder this}
          * @throws IllegalArgumentException if {@code user} is {@code null}.
          * @since 0.8.1
          */
@@ -651,8 +670,52 @@ public final class MySqlConnectionConfiguration {
         }
 
         /**
-         * Configures the time zone conversion.  Default to {@code true} means enable conversion between JVM
-         * and {@link #connectionTimeZone(String)}.
+         * Configures the password.  Default login without password.
+         * <p>
+         * Note: for memory security, should not use intern {@link String} for password.
+         *
+         * @param password the password, or {@code null} when user has no password.
+         * @return {@link Builder this}
+         * @since 0.8.1
+         */
+        public Builder password(@Nullable CharSequence password) {
+            this.password = Mono.justOrEmpty(password);
+            return this;
+        }
+
+        /**
+         * Configures the password.  Default login without password.
+         *
+         * @param password a {@link Supplier} to retrieve password.
+         * @return {@link Builder this}
+         * @throws IllegalArgumentException if {@code password} is {@code null}.
+         * @since 1.2.0
+         */
+        public Builder password(Supplier<? extends CharSequence> password) {
+            requireNonNull(password, "password must not be null");
+
+            this.password = Mono.fromSupplier(password);
+            return this;
+        }
+
+        /**
+         * Configures the password.  Default login without password.
+         *
+         * @param password a {@link Publisher} to retrieve password.
+         * @return {@link Builder this}
+         * @throws IllegalArgumentException if {@code password} is {@code null}.
+         * @since 1.2.0
+         */
+        public Builder password(Publisher<? extends CharSequence> password) {
+            requireNonNull(password, "password must not be null");
+
+            this.password = Mono.from(password);
+            return this;
+        }
+
+        /**
+         * Configures the time zone conversion.  Default to {@code true} means enable conversion between JVM and
+         * {@link #connectionTimeZone(String)}.
          * <p>
          * Note: disable it will ignore the time zone of connection, and use the JVM local time zone.
          *
@@ -682,8 +745,8 @@ public final class MySqlConnectionConfiguration {
         }
 
         /**
-         * Configures to force the connection time zone to session time zone.  Default to {@code false}. Used
-         * only if the {@link #connectionTimeZone(String)} is not {@code "SERVER"}.
+         * Configures to force the connection time zone to session time zone.  Default to {@code false}. Used only if
+         * the {@link #connectionTimeZone(String)} is not {@code "SERVER"}.
          * <p>
          * Note: alter the time zone of session will affect the results of MySQL date/time functions, e.g.
          * {@code NOW([n])}, {@code CURRENT_TIME([n])}, {@code CURRENT_DATE()}, etc. Please use with caution.
@@ -711,11 +774,11 @@ public final class MySqlConnectionConfiguration {
         }
 
         /**
-         * Configures the {@link ZeroDateOption}.  Default to {@link ZeroDateOption#USE_NULL}.  It is a
-         * behavior option when this driver receives a value of zero-date.
+         * Configures the {@link ZeroDateOption}.  Default to {@link ZeroDateOption#USE_NULL}.  It is a behavior option
+         * when this driver receives a value of zero-date.
          *
          * @param zeroDate the {@link ZeroDateOption}.
-         * @return this {@link Builder}.
+         * @return {@link Builder this}
          * @throws IllegalArgumentException if {@code zeroDate} is {@code null}.
          * @since 0.8.1
          */
@@ -726,46 +789,46 @@ public final class MySqlConnectionConfiguration {
 
         /**
          * Configures ssl mode.  See also {@link SslMode}.
+         * <p>
+         * Note: It is used only if the {@link #unixSocket(String)} is not configured.
          *
          * @param sslMode the SSL mode to use.
-         * @return this {@link Builder}.
+         * @return {@link Builder this}
          * @throws IllegalArgumentException if {@code sslMode} is {@code null}.
          * @since 0.8.1
          */
         public Builder sslMode(SslMode sslMode) {
-            this.sslMode = requireNonNull(sslMode, "sslMode must not be null");
+            requireNonNull(sslMode, "sslMode must not be null");
+
+            this.ssl.sslMode(sslMode);
             return this;
         }
 
         /**
          * Configures TLS versions, see {@link io.asyncer.r2dbc.mysql.constant.TlsVersions TlsVersions}.
+         * <p>
+         * Note: It is used only if the {@link #unixSocket(String)} is not configured.
          *
          * @param tlsVersion TLS versions.
-         * @return this {@link Builder}.
+         * @return {@link Builder this}
          * @throws IllegalArgumentException if the array {@code tlsVersion} is {@code null}.
          * @since 0.8.1
          */
         public Builder tlsVersion(String... tlsVersion) {
             requireNonNull(tlsVersion, "tlsVersion must not be null");
 
-            int size = tlsVersion.length;
-
-            if (size > 0) {
-                String[] versions = new String[size];
-                System.arraycopy(tlsVersion, 0, versions, 0, size);
-                this.tlsVersion = versions;
-            } else {
-                this.tlsVersion = EMPTY_STRINGS;
-            }
+            this.ssl.tlsVersions(tlsVersion);
             return this;
         }
 
         /**
          * Configures SSL {@link HostnameVerifier}, it is available only set {@link #sslMode(SslMode)} as
-         * {@link SslMode#VERIFY_IDENTITY}. It is useful when server was using special Certificates or need
-         * special verification.
+         * {@link SslMode#VERIFY_IDENTITY}. It is useful when server was using special Certificates or need special
+         * verification.
          * <p>
          * Default is builtin {@link HostnameVerifier} which use RFC standards.
+         * <p>
+         * Note: It is used only if the {@link #unixSocket(String)} is not configured.
          *
          * @param sslHostnameVerifier the custom {@link HostnameVerifier}.
          * @return this {@link Builder}
@@ -773,8 +836,9 @@ public final class MySqlConnectionConfiguration {
          * @since 0.8.2
          */
         public Builder sslHostnameVerifier(HostnameVerifier sslHostnameVerifier) {
-            this.sslHostnameVerifier = requireNonNull(sslHostnameVerifier,
-                "sslHostnameVerifier must not be null");
+            requireNonNull(sslHostnameVerifier, "sslHostnameVerifier must not be null");
+
+            this.ssl.sslHostnameVerifier(sslHostnameVerifier);
             return this;
         }
 
@@ -783,41 +847,47 @@ public final class MySqlConnectionConfiguration {
          * {@link #sslMode(SslMode)} is configured for verify server certification.
          * <p>
          * Default is {@code null}, which means that the default algorithm is used for the trust manager.
+         * <p>
+         * Note: It is used only if the {@link #unixSocket(String)} is not configured.
          *
          * @param sslCa an X.509 certificate chain file in PEM format.
-         * @return this {@link Builder}.
+         * @return {@link Builder this}
          * @since 0.8.1
          */
         public Builder sslCa(@Nullable String sslCa) {
-            this.sslCa = sslCa;
+            this.ssl.sslCa(sslCa);
             return this;
         }
 
         /**
          * Configures client SSL certificate for client authentication.
          * <p>
-         * The {@link #sslCert} and {@link #sslKey} must be both non-{@code null} or both {@code null}.
+         * It and {@link #sslKey} must be both non-{@code null} or both {@code null}.
+         * <p>
+         * Note: It is used only if the {@link #unixSocket(String)} is not configured.
          *
          * @param sslCert an X.509 certificate chain file in PEM format, or {@code null} if no SSL cert.
-         * @return this {@link Builder}.
+         * @return {@link Builder this}
          * @since 0.8.2
          */
         public Builder sslCert(@Nullable String sslCert) {
-            this.sslCert = sslCert;
+            this.ssl.sslCert(sslCert);
             return this;
         }
 
         /**
          * Configures client SSL key for client authentication.
          * <p>
-         * The {@link #sslCert} and {@link #sslKey} must be both non-{@code null} or both {@code null}.
+         * It and {@link #sslCert} must be both non-{@code null} or both {@code null}.
+         * <p>
+         * Note: It is used only if the {@link #unixSocket(String)} is not configured.
          *
          * @param sslKey a PKCS#8 private key file in PEM format, or {@code null} if no SSL key.
-         * @return this {@link Builder}.
+         * @return {@link Builder this}
          * @since 0.8.2
          */
         public Builder sslKey(@Nullable String sslKey) {
-            this.sslKey = sslKey;
+            this.ssl.sslKey(sslKey);
             return this;
         }
 
@@ -825,39 +895,42 @@ public final class MySqlConnectionConfiguration {
          * Configures the password of SSL key file for client certificate authentication.
          * <p>
          * It will be used only if {@link #sslKey} and {@link #sslCert} non-null.
+         * <p>
+         * Note: It is used only if the {@link #unixSocket(String)} is not configured.
          *
-         * @param sslKeyPassword the password of the {@link #sslKey}, or {@code null} if it's not
-         *                       password-protected.
-         * @return this {@link Builder}.
+         * @param sslKeyPassword the password of the {@link #sslKey}, or {@code null} if it's not password-protected.
+         * @return {@link Builder this}
          * @since 0.8.2
          */
         public Builder sslKeyPassword(@Nullable CharSequence sslKeyPassword) {
-            this.sslKeyPassword = sslKeyPassword;
+            this.ssl.sslKeyPassword(sslKeyPassword);
             return this;
         }
 
         /**
-         * Configures a {@link SslContextBuilder} customizer. The customizer gets applied on each SSL
-         * connection attempt to allow for just-in-time configuration updates. The {@link Function} gets
-         * called with the prepared {@link SslContextBuilder} that has all configuration options applied. The
-         * customizer may return the same builder or return a new builder instance to be used to build the SSL
-         * context.
+         * Configures a {@link SslContextBuilder} customizer. The customizer gets applied on each SSL connection attempt
+         * to allow for just-in-time configuration updates. The {@link Function} gets called with the prepared
+         * {@link SslContextBuilder} that has all configuration options applied. The customizer may return the same
+         * builder or return a new builder instance to be used to build the SSL context.
+         * <p>
+         * Note: It is used only if the {@link #unixSocket(String)} is not configured.
          *
          * @param customizer customizer function
          * @return this {@link Builder}
          * @throws IllegalArgumentException if {@code customizer} is {@code null}
          * @since 0.8.1
          */
-        public Builder sslContextBuilderCustomizer(
-            Function<SslContextBuilder, SslContextBuilder> customizer) {
+        public Builder sslContextBuilderCustomizer(Function<SslContextBuilder, SslContextBuilder> customizer) {
             requireNonNull(customizer, "sslContextBuilderCustomizer must not be null");
 
-            this.sslContextBuilderCustomizer = customizer;
+            this.ssl.sslContextBuilderCustomizer(customizer);
             return this;
         }
 
         /**
          * Configures TCP KeepAlive.
+         * <p>
+         * Note: It is used only if the {@link #unixSocket(String)} is not configured.
          *
          * @param enabled whether to enable TCP KeepAlive
          * @return this {@link Builder}
@@ -865,12 +938,14 @@ public final class MySqlConnectionConfiguration {
          * @since 0.8.2
          */
         public Builder tcpKeepAlive(boolean enabled) {
-            this.tcpKeepAlive = enabled;
+            requireTcpSocket().tcpKeepAlive(enabled);
             return this;
         }
 
         /**
          * Configures TCP NoDelay.
+         * <p>
+         * Note: It is used only if the {@link #unixSocket(String)} is not configured.
          *
          * @param enabled whether to enable TCP NoDelay
          * @return this {@link Builder}
@@ -878,15 +953,14 @@ public final class MySqlConnectionConfiguration {
          * @since 0.8.2
          */
         public Builder tcpNoDelay(boolean enabled) {
-            this.tcpNoDelay = enabled;
+            requireTcpSocket().tcpNoDelay(enabled);
             return this;
         }
 
         /**
          * Configures the protocol of parameterized statements to the text protocol.
          * <p>
-         * The text protocol is default protocol that's using client-preparing. See also MySQL
-         * documentations.
+         * The text protocol is default protocol that's using client-preparing. See also MySQL documentations.
          *
          * @return this {@link Builder}
          * @since 0.8.1
@@ -899,10 +973,9 @@ public final class MySqlConnectionConfiguration {
         /**
          * Configures the protocol of parameterized statements to the binary protocol.
          * <p>
-         * The binary protocol is compact protocol that's using server-preparing. See also MySQL
-         * documentations.
+         * The binary protocol is compact protocol that's using server-preparing. See also MySQL documentations.
          *
-         * @return this {@link Builder}.
+         * @return {@link Builder this}
          * @since 0.8.1
          */
         public Builder useServerPrepareStatement() {
@@ -910,19 +983,18 @@ public final class MySqlConnectionConfiguration {
         }
 
         /**
-         * Configures the protocol of parameterized statements and prepare-preferred simple statements to the
-         * binary protocol.
+         * Configures the protocol of parameterized statements and prepare-preferred simple statements to the binary
+         * protocol.
          * <p>
-         * The {@code preferPrepareStatement} configures whether to prefer prepare execution on a
-         * statement-by-statement basis (simple statements). The {@link Predicate} accepts the simple SQL
-         * query string and returns a boolean flag indicating preference. {@code true} prepare-preferred,
-         * {@code false} prefers direct execution (text protocol). Defaults to direct execution.
+         * The {@code preferPrepareStatement} configures whether to prefer prepare execution on a statement-by-statement
+         * basis (simple statements). The {@link Predicate} accepts the simple SQL query string and returns a boolean
+         * flag indicating preference. {@code true} prepare-preferred, {@code false} prefers direct execution (text
+         * protocol). Defaults to direct execution.
          * <p>
-         * The binary protocol is compact protocol that's using server-preparing. See also MySQL
-         * documentations.
+         * The binary protocol is compact protocol that's using server-preparing. See also MySQL documentations.
          *
          * @param preferPrepareStatement the above {@link Predicate}.
-         * @return this {@link Builder}.
+         * @return {@link Builder this}
          * @throws IllegalArgumentException if {@code preferPrepareStatement} is {@code null}.
          * @since 0.8.1
          */
@@ -934,8 +1006,8 @@ public final class MySqlConnectionConfiguration {
         }
 
         /**
-         * Configures the session variables, used to set session variables immediately after login. Default no
-         * session variables to set.  It should be a list of key-value pairs. e.g.
+         * Configures the session variables, used to set session variables immediately after login. Default no session
+         * variables to set.  It should be a list of key-value pairs. e.g.
          * {@code ["sql_mode='ANSI_QUOTES,STRICT_TRANS_TABLES'", "time_zone=00:00"]}.
          *
          * @param sessionVariables the session variables to set.
@@ -951,7 +1023,7 @@ public final class MySqlConnectionConfiguration {
         }
 
         /**
-         * Configures the lock wait timeout.  Default to use the server-side default value.
+         * <<<<<<< HEAD Configures the lock wait timeout.  Default to use the server-side default value.
          *
          * @param lockWaitTimeout the lock wait timeout, or {@code null} to use the server-side default value.
          * @return {@link Builder this}
@@ -975,8 +1047,8 @@ public final class MySqlConnectionConfiguration {
         }
 
         /**
-         * Configures to allow the {@code LOAD DATA LOCAL INFILE} statement in the given {@code path} or
-         * disallow the statement.  Default to {@code null} which means not allow the statement.
+         * Configures to allow the {@code LOAD DATA LOCAL INFILE} statement in the given {@code path} or disallow the
+         * statement.  Default to {@code null} which means not allow the statement.
          *
          * @param path which parent path are allowed to load file data, {@code null} means not be allowed.
          * @return {@link Builder this}.
@@ -1007,14 +1079,14 @@ public final class MySqlConnectionConfiguration {
         }
 
         /**
-         * Configures the maximum size of the {@link Query} parsing cache. Usually it should be power of two.
-         * Default to {@code 0}. Driver will use unbounded cache if size is less than {@code 0}.
+         * Configures the maximum size of the {@link Query} parsing cache. Usually it should be power of two. Default to
+         * {@code 0}. Driver will use unbounded cache if size is less than {@code 0}.
          * <p>
-         * Notice: the cache is using EL model (the PACELC theorem) which provider better performance. That
-         * means it is an elastic cache. So this size is not a hard-limit. It should be over 16 in average.
+         * Notice: the cache is using EL model (the PACELC theorem) which provider better performance. That means it is
+         * an elastic cache. So this size is not a hard-limit. It should be over 16 in average.
          *
          * @param queryCacheSize the above size, {@code 0} means no cache, {@code -1} means unbounded cache.
-         * @return this {@link Builder}.
+         * @return {@link Builder this}
          * @since 0.8.3
          */
         public Builder queryCacheSize(int queryCacheSize) {
@@ -1023,19 +1095,17 @@ public final class MySqlConnectionConfiguration {
         }
 
         /**
-         * Configures the maximum size of the server-preparing cache. Usually it should be power of two.
-         * Default to {@code 256}. Driver will use unbounded cache if size is less than {@code 0}. It is used
-         * only if using server-preparing parameterized statements, i.e. the {@link #useServerPrepareStatement}
-         * is set.
+         * Configures the maximum size of the server-preparing cache. Usually it should be power of two. Default to
+         * {@code 256}. Driver will use unbounded cache if size is less than {@code 0}. It is used only if using
+         * server-preparing parameterized statements, i.e. the {@link #useServerPrepareStatement} is set.
          * <p>
-         * Notice: the cache is using EC model (the PACELC theorem) for ensure consistency. Consistency is
-         * very important because MySQL contains a hard limit of all server-prepared statements which has been
-         * opened, see also {@code max_prepared_stmt_count}. And, the cache is one-to-one connection, which
-         * means it will not work on thread-concurrency.
+         * Notice: the cache is using EC model (the PACELC theorem) for ensure consistency. Consistency is very
+         * important because MySQL contains a hard limit of all server-prepared statements which has been opened, see
+         * also {@code max_prepared_stmt_count}. And, the cache is one-to-one connection, which means it will not work
+         * on thread-concurrency.
          *
-         * @param prepareCacheSize the above size, {@code 0} means no cache, {@code -1} means unbounded
-         *                         cache.
-         * @return this {@link Builder}.
+         * @param prepareCacheSize the above size, {@code 0} means no cache, {@code -1} means unbounded cache.
+         * @return {@link Builder this}
          * @since 0.8.3
          */
         public Builder prepareCacheSize(int prepareCacheSize) {
@@ -1046,10 +1116,9 @@ public final class MySqlConnectionConfiguration {
         /**
          * Configures the compression algorithms.  Default to [{@link CompressionAlgorithm#UNCOMPRESSED}].
          * <p>
-         * It will auto choose an algorithm that's contained in the list and supported by the server,
-         * preferring zstd, then zlib. If the list does not contain {@link CompressionAlgorithm#UNCOMPRESSED}
-         * and the server does not support any algorithm in the list, an exception will be thrown when
-         * connecting.
+         * It will auto choose an algorithm that's contained in the list and supported by the server, preferring zstd,
+         * then zlib. If the list does not contain {@link CompressionAlgorithm#UNCOMPRESSED} and the server does not
+         * support any algorithm in the list, an exception will be thrown when connecting.
          * <p>
          * Note: zstd requires a dependency {@code com.github.luben:zstd-jni}.
          *
@@ -1106,12 +1175,12 @@ public final class MySqlConnectionConfiguration {
          * {@link TcpResources#get() global tcp resources}.
          *
          * @param loopResources the {@link LoopResources}.
-         * @return this {@link Builder}.
+         * @return {@link Builder this}
          * @throws IllegalArgumentException if {@code loopResources} is {@code null}.
          * @since 1.1.2
          */
         public Builder loopResources(LoopResources loopResources) {
-            this.loopResources = requireNonNull(loopResources, "loopResources must not be null");
+            this.client.loopResources(loopResources);
             return this;
         }
 
@@ -1120,7 +1189,7 @@ public final class MySqlConnectionConfiguration {
          * {@code true}.
          *
          * @param enabled to discover and register extensions.
-         * @return this {@link Builder}.
+         * @return {@link Builder this}
          * @since 0.8.2
          */
         public Builder autodetectExtensions(boolean enabled) {
@@ -1131,12 +1200,12 @@ public final class MySqlConnectionConfiguration {
         /**
          * Registers a {@link Extension} to extend driver functionality and manually.
          * <p>
-         * Notice: the driver will not deduplicate {@link Extension}s of autodetect discovered and manually
-         * extended. So if a {@link Extension} is registered by this function and autodetect discovered, it
-         * will get two {@link Extension} as same.
+         * Notice: the driver will not deduplicate {@link Extension}s of autodetect discovered and manually extended. So
+         * if a {@link Extension} is registered by this function and autodetect discovered, it will get two
+         * {@link Extension} as same.
          *
          * @param extension extension to extend driver functionality.
-         * @return this {@link Builder}.
+         * @return {@link Builder this}
          * @throws IllegalArgumentException if {@code extension} is {@code null}.
          * @since 0.8.2
          */
@@ -1146,26 +1215,36 @@ public final class MySqlConnectionConfiguration {
         }
 
         /**
-         * Registers a password publisher function.
+         * Registers a password publisher function.  Since 1.2.0, it is an alias of {@link #password(Publisher)}.
          *
-         * @param passwordPublisher function to retrieve password before making connection.
-         * @return this {@link Builder}.
+         * @param password a {@link Publisher} to retrieve password before making connection.
+         * @return {@link Builder this}
          */
-        public Builder passwordPublisher(Publisher<String> passwordPublisher) {
-            this.passwordPublisher = passwordPublisher;
-            return this;
+        public Builder passwordPublisher(Publisher<? extends CharSequence> password) {
+            return password(password);
         }
 
-        private SslMode requireSslMode() {
-            SslMode sslMode = this.sslMode;
+        private TcpSocketConfiguration.Builder requireTcpSocket() {
+            TcpSocketConfiguration.Builder tcpSocket = this.tcpSocket;
 
-            if (sslMode == null) {
-                sslMode = isHost ? SslMode.PREFERRED : SslMode.DISABLED;
+            if (tcpSocket == null) {
+                this.tcpSocket = tcpSocket = new TcpSocketConfiguration.Builder();
             }
 
-            return sslMode;
+            return tcpSocket;
         }
 
-        private Builder() { }
+        private UnixDomainSocketConfiguration.Builder requireUnixSocket() {
+            UnixDomainSocketConfiguration.Builder unixSocket = this.unixSocket;
+
+            if (unixSocket == null) {
+                this.unixSocket = unixSocket = new UnixDomainSocketConfiguration.Builder();
+            }
+
+            return unixSocket;
+        }
+
+        private Builder() {
+        }
     }
 }

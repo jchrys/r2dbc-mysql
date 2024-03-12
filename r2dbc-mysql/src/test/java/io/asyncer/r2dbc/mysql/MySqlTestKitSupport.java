@@ -18,6 +18,7 @@ package io.asyncer.r2dbc.mysql;
 
 import com.zaxxer.hikari.HikariDataSource;
 import io.asyncer.r2dbc.mysql.internal.util.TestContainerExtension;
+import io.asyncer.r2dbc.mysql.internal.NodeAddress;
 import io.r2dbc.spi.test.TestKit;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -78,15 +79,19 @@ abstract class MySqlTestKitSupport implements TestKit<String> {
     }
 
     private static JdbcTemplate jdbc(MySqlConnectionConfiguration configuration) {
+        TcpSocketConfiguration socket = (TcpSocketConfiguration) configuration.getSocket();
+        NodeAddress address = socket.getFirstAddress();
+        Credential credential = configuration.getCredential().blockOptional().orElseThrow(() ->
+            new IllegalStateException("Credential must be present"));
         HikariDataSource source = new HikariDataSource();
 
-        source.setJdbcUrl(String.format("jdbc:mysql://%s:%d/%s", configuration.getDomain(),
-            configuration.getPort(), configuration.getDatabase()));
-        source.setUsername(configuration.getUser());
-        source.setPassword(Optional.ofNullable(configuration.getPassword())
+        source.setJdbcUrl(String.format("jdbc:mysql://%s:%d/%s",
+            address.getHost(), address.getPort(), configuration.getDatabase()));
+        source.setUsername(credential.getUser());
+        source.setPassword(Optional.ofNullable(credential.getPassword())
             .map(Object::toString).orElse(null));
         source.setMaximumPoolSize(1);
-        source.setConnectionTimeout(Optional.ofNullable(configuration.getConnectTimeout())
+        source.setConnectionTimeout(Optional.ofNullable(configuration.getClient().getConnectTimeout())
             .map(Duration::toMillis).orElse(0L));
 
         source.addDataSourceProperty("preserveInstants", configuration.isPreserveInstants());
