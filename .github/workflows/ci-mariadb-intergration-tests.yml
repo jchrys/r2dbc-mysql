@@ -9,7 +9,7 @@ jobs:
     runs-on: ubuntu-20.04
     strategy:
       matrix:
-        mariadb-version: [ 10.6, 10.11 ]
+        mariadb-version: [ 10.0, 10.1, 10.2.15, 10.2, 10.3.7, 10.3, 10.5.1, 10.5, 10.6, 10.11]
     name: Integration test with MariaDB ${{ matrix.mariadb-version }}
     steps:
       - uses: actions/checkout@v3
@@ -21,21 +21,13 @@ jobs:
           cache: maven
       - name: Shutdown the Default MySQL
         run: sudo service mysql stop
-      - name: Set up MariaDB ${{ matrix.mariadb-version }}
-        env:
-          MYSQL_DATABASE: r2dbc
-          MYSQL_ROOT_PASSWORD: r2dbc-password!@
-          MARIADB_VERSION: ${{ matrix.mariadb-version }}
-        run: docker-compose -f ${{ github.workspace }}/containers/mariadb-compose.yml up -d
-      - name: Integration test with MySQL ${{ matrix.mysql-version }}
+      - name: Integration test with MariaDB ${{ matrix.mysql-version }}
         run: |
           set -o pipefail
           ./mvnw -B verify -Dmaven.javadoc.skip=true \
           -Dmaven.surefire.skip=true \
-          -Dtest.mysql.password=r2dbc-password!@ \
-          -Dtest.mysql.version=${{ matrix.mariadb-version }} \
           -Dtest.db.type=mariadb \
-          -Dorg.slf4j.simpleLogger.log.org.apache.maven.cli.transfer.Slf4jMavenTransferListener=WARN \
+          -Dtest.db.version=${{ matrix.mariadb-version }} \
           -Dorg.slf4j.simpleLogger.log.org.apache.maven.cli.transfer.Slf4jMavenTransferListener=WARN \
           -Dio.netty.leakDetectionLevel=paranoid \
           -Dio.netty.leakDetection.targetRecords=32 \

@@ -9,7 +9,7 @@ jobs:
     runs-on: ubuntu-20.04
     strategy:
       matrix:
-        mysql-version: [ 5.5, 5.6, 5.7, 8.0, 8.1, 8.2 ]
+        mysql-version: [ 5.5, 5.6.45, 5.6, 5.7.28, 5.7, 8.0, 8.1, 8.2, 8.3]
     name: Integration test with MySQL ${{ matrix.mysql-version }}
     steps:
       - uses: actions/checkout@v3
@@ -21,19 +21,13 @@ jobs:
           cache: maven
       - name: Shutdown the Default MySQL
         run: sudo service mysql stop
-      - name: Set up MySQL ${{ matrix.mysql-version }}
-        env:
-          MYSQL_DATABASE: r2dbc
-          MYSQL_ROOT_PASSWORD: r2dbc-password!@
-          MYSQL_VERSION: ${{ matrix.mysql-version }}
-        run: docker-compose -f ${{ github.workspace }}/containers/mysql-compose.yml up -d
       - name: Integration test with MySQL ${{ matrix.mysql-version }}
         run: |
           set -o pipefail
           ./mvnw -B verify -Dmaven.javadoc.skip=true \
           -Dmaven.surefire.skip=true \
-          -Dtest.mysql.password=r2dbc-password!@ \
-          -Dtest.mysql.version=${{ matrix.mysql-version }} \
+          -Dtest.db.type=mysql \
+          -Dtest.db.version=${{ matrix.mysql-version }} \
           -Dorg.slf4j.simpleLogger.log.org.apache.maven.cli.transfer.Slf4jMavenTransferListener=WARN \
           -Dio.netty.leakDetectionLevel=paranoid \
           -Dio.netty.leakDetection.targetRecords=32 \

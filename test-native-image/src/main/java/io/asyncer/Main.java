@@ -34,8 +34,8 @@ public final class Main {
                 .option(ConnectionFactoryOptions.HOST, "127.0.0.1")
                 .option(ConnectionFactoryOptions.PORT, 3306)
                 .option(ConnectionFactoryOptions.USER, "root")
-                .option(ConnectionFactoryOptions.PASSWORD, System.getProperty("test.mysql.password"))
-                .option(ConnectionFactoryOptions.DATABASE, "r2dbc")
+                .option(ConnectionFactoryOptions.PASSWORD, "root")
+                .option(ConnectionFactoryOptions.DATABASE, "test")
                 .option(MySqlConnectionFactoryProvider.CREATE_DATABASE_IF_NOT_EXIST, true)
                 .build());
 

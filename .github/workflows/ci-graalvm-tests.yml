@@ -24,19 +24,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up MySQL
-        env:
-         MYSQL_DATABASE: r2dbc
-         MYSQL_ROOT_PASSWORD: r2dbc-password!@
-         MYSQL_VERSION: 8.1
-        run: docker-compose -f ${{ github.workspace }}/containers/mysql-compose.yml up -d
-
       - uses: graalvm/setup-graalvm@v1
         with:
           java-version: 21
           distribution: 'graalvm'
           native-image-job-reports: true
           github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Start Bundled MySQL
+        run: sudo service mysql start
 
       - name: Cache & Load Local Maven Repository
         uses: actions/cache@v3
@@ -50,4 +46,4 @@ jobs:
             echo "JAVA_HOME=$JAVA_HOME"
             echo "./mvnw -Pgraalvm package -Dmaven.javadoc.skip=true"
             ./mvnw -Pgraalvm package -Dmaven.javadoc.skip=true
-            ./test-native-image/target/test-native-image -Dtest.mysql.password=r2dbc-password!@
+            ./test-native-image/target/test-native-image

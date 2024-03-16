@@ -286,7 +286,7 @@ abstract class QueryIntegrationTestSupport extends IntegrationTestSupport {
             EnumSet.of(EnumData.ONE, EnumData.THREE));
     }
 
-    @DisabledIf("envIsLessThanMySql57OrMariaDb102")
+    @DisabledIf("envIsLessThanMySql578OrMariaDb102")
     @Test
     void json() {
         testType(String.class, false, "JSON", null, "{\"data\": 1}", "[\"data\", 1]", "1", "null",
@@ -576,7 +576,7 @@ abstract class QueryIntegrationTestSupport extends IntegrationTestSupport {
     /**
      * ref: <a href="https://github.com/asyncer-io/r2dbc-mysql/issues/91">Issue 91</a>
      */
-    @DisabledIf("envIsLessThanMySql57OrMariaDb102")
+    @DisabledIf("envIsLessThanMySql578OrMariaDb102")
     @Test
     void testUnionQueryWithJsonColumnDecodedAsString() {
         complete(connection ->
@@ -619,11 +619,18 @@ abstract class QueryIntegrationTestSupport extends IntegrationTestSupport {
     @Test
     @DisabledIf("envIsLessThanMySql574OrMariaDb1011")
     void setStatementTimeoutTest() {
-        final String sql = "SELECT 1 WHERE SLEEP(1) > 1";
+        final String sql = "SELECT COUNT(*) " +
+                           "FROM information_schema.tables a cross join " +
+                           "information_schema.tables b cross join " +
+                           "information_schema.tables c cross join " +
+                           "information_schema.tables d cross join " +
+                           "information_schema.tables e";
+
         timeout(connection -> connection.setStatementTimeout(Duration.ofMillis(500))
                 .then(Mono.from(connection.createStatement(sql).execute()))
                 .flatMapMany(result -> Mono.from(result.map((row, metadata) -> row.get(0, String.class))))
                 .collectList()
+                .doOnNext(System.out::println)
         );
     }
 

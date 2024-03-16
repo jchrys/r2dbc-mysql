@@ -17,9 +17,12 @@
 package io.asyncer.r2dbc.mysql;
 
 import io.asyncer.r2dbc.mysql.api.MySqlConnection;
+import io.asyncer.r2dbc.mysql.internal.util.TestContainerExtension;
+import io.asyncer.r2dbc.mysql.internal.util.TestServerUtil;
 import io.r2dbc.spi.R2dbcBadGrammarException;
 import io.r2dbc.spi.R2dbcTimeoutException;
 import io.r2dbc.spi.Result;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.reactivestreams.Publisher;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
@@ -38,6 +41,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 /**
  * Base class considers connection factory and general function for integration tests.
  */
+@ExtendWith(TestContainerExtension.class)
 abstract class IntegrationTestSupport {
 
     private final MySqlConnectionFactory connectionFactory;
@@ -82,11 +86,6 @@ abstract class IntegrationTestSupport {
     static MySqlConnectionConfiguration configuration(
         Function<MySqlConnectionConfiguration.Builder, MySqlConnectionConfiguration.Builder> customizer
     ) {
-        String password = System.getProperty("test.mysql.password");
-
-        assertThat(password).withFailMessage("Property test.mysql.password must exists and not be empty")
-            .isNotNull()
-            .isNotEmpty();
 
         String localInfilePath;
 
@@ -99,73 +98,47 @@ abstract class IntegrationTestSupport {
         }
 
         MySqlConnectionConfiguration.Builder builder = MySqlConnectionConfiguration.builder()
-            .host("127.0.0.1")
+            .host(TestServerUtil.getHost())
+            .port(TestServerUtil.getPort())
+            .user(TestServerUtil.getUsername())
+            .password(TestServerUtil.getPassword())
+            .database(TestServerUtil.getDatabase())
             .connectTimeout(Duration.ofSeconds(3))
-            .user("root")
-            .password(password)
-            .database("r2dbc")
             .allowLoadLocalInfileInPath(localInfilePath);
 
         return customizer.apply(builder).build();
     }
 
     boolean envIsLessThanMySql56() {
-        String version = System.getProperty("test.mysql.version");
-
-        if (version == null || version.isEmpty()) {
-            return true;
-        }
-
-        ServerVersion ver = ServerVersion.parse(version);
-        String type = System.getProperty("test.db.type");
-
-        if ("mariadb".equalsIgnoreCase(type)) {
+        if (TestServerUtil.isMariaDb()) {
             return false;
         }
-
+        final ServerVersion ver = TestServerUtil.getServerVersion();
         return ver.isLessThan(ServerVersion.create(5, 6, 0));
     }
 
-    boolean envIsLessThanMySql57OrMariaDb102() {
-        String version = System.getProperty("test.mysql.version");
-
-        if (version == null || version.isEmpty()) {
-            return true;
-        }
-
-        ServerVersion ver = ServerVersion.parse(version);
-        String type = System.getProperty("test.db.type");
-
-        if ("mariadb".equalsIgnoreCase(type)) {
+    boolean envIsLessThanMySql578OrMariaDb102() {
+        final ServerVersion ver = TestServerUtil.getServerVersion();
+        if (TestServerUtil.isMariaDb()) {
             return ver.isLessThan(ServerVersion.create(10, 2, 0));
         }
 
-        return ver.isLessThan(ServerVersion.create(5, 7, 0));
+        return ver.isLessThan(ServerVersion.create(5, 7, 8));
     }
 
     static boolean envIsMariaDb10_5_1() {
-        String type = System.getProperty("test.db.type");
-
-        if (!"mariadb".equalsIgnoreCase(type)) {
+        if (!TestServerUtil.isMariaDb()) {
             return false;
         }
 
-        ServerVersion ver = ServerVersion.parse(System.getProperty("test.mysql.version"));
+        final ServerVersion ver = TestServerUtil.getServerVersion();
 
         return ver.isGreaterThanOrEqualTo(ServerVersion.create(10, 5, 1));
     }
 
     boolean envIsLessThanMySql574OrMariaDb1011() {
-        String version = System.getProperty("test.mysql.version");
-
-        if (version == null || version.isEmpty()) {
-            return true;
-        }
-
-        ServerVersion ver = ServerVersion.parse(version);
-        String type = System.getProperty("test.db.type");
-
-        if ("mariadb".equalsIgnoreCase(type)) {
+        final ServerVersion ver = TestServerUtil.getServerVersion();
+        if (TestServerUtil.isMariaDb()) {
             return ver.isLessThan(ServerVersion.create(10, 1, 1));
         }
 

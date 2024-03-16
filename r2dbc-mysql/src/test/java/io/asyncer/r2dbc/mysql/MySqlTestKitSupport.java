@@ -17,7 +17,9 @@
 package io.asyncer.r2dbc.mysql;
 
 import com.zaxxer.hikari.HikariDataSource;
+import io.asyncer.r2dbc.mysql.internal.util.TestContainerExtension;
 import io.r2dbc.spi.test.TestKit;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.jdbc.core.JdbcTemplate;
 
 import java.time.Duration;
@@ -26,6 +28,7 @@ import java.util.Optional;
 /**
  * Base class considers integration tests of {@link TestKit}.
  */
+@ExtendWith(TestContainerExtension.class)
 abstract class MySqlTestKitSupport implements TestKit<String> {
 
     private final MySqlConnectionFactory connectionFactory;

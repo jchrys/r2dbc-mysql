@@ -17,6 +17,7 @@
 package io.asyncer.r2dbc.mysql;
 
 import io.asyncer.r2dbc.mysql.constant.CompressionAlgorithm;
+import io.asyncer.r2dbc.mysql.internal.util.TestServerUtil;
 import org.junit.jupiter.api.condition.EnabledIf;
 
 /**
@@ -30,19 +31,11 @@ class ZstdCompressionIntegrationTest extends CompressionIntegrationTestSupport {
     }
 
     static boolean envIsZstdSupported() {
-        String type = System.getProperty("test.db.type");
-
-        if ("mariadb".equalsIgnoreCase(type)) {
+        if (TestServerUtil.isMariaDb()) {
             return false;
         }
 
-        String version = System.getProperty("test.mysql.version");
-
-        if (version == null || version.isEmpty()) {
-            return true;
-        }
-
-        ServerVersion ver = ServerVersion.parse(version);
+        final ServerVersion ver = TestServerUtil.getServerVersion();
         return ver.isGreaterThanOrEqualTo(ServerVersion.create(8, 0, 18));
     }
 }

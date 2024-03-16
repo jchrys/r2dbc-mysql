@@ -2,11 +2,14 @@ package io.asyncer.r2dbc.mysql;
 
 import com.zaxxer.hikari.HikariDataSource;
 import io.asyncer.r2dbc.mysql.api.MySqlResult;
+import io.asyncer.r2dbc.mysql.internal.util.TestContainerExtension;
+import io.asyncer.r2dbc.mysql.internal.util.TestServerUtil;
 import org.assertj.core.data.TemporalUnitOffset;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.api.parallel.Isolated;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
@@ -44,6 +47,7 @@ import static org.assertj.core.api.Assertions.within;
 /**
  * Integration tests for aligning time zone configuration options with jdbc.
  */
+@ExtendWith(TestContainerExtension.class)
 @Isolated
 class TimeZoneIntegrationTest {
 
@@ -291,18 +295,13 @@ class TimeZoneIntegrationTest {
     private static MySqlConnectionConfiguration configuration(
         Function<MySqlConnectionConfiguration.Builder, MySqlConnectionConfiguration.Builder> customizer
     ) {
-        String password = System.getProperty("test.mysql.password");
-
-        if (password == null || password.isEmpty()) {
-            throw new IllegalStateException("Property test.mysql.password must exists and not be empty");
-        }
 
         MySqlConnectionConfiguration.Builder builder = MySqlConnectionConfiguration.builder()
-            .host("localhost")
-            .port(3306)
-            .user("root")
-            .password(password)
-            .database("r2dbc");
+            .host(TestServerUtil.getHost())
+            .port(TestServerUtil.getPort())
+            .user(TestServerUtil.getUsername())
+            .password(TestServerUtil.getPassword())
+            .database(TestServerUtil.getDatabase());
 
         return customizer.apply(builder).build();
     }
@@ -328,19 +327,13 @@ class TimeZoneIntegrationTest {
     }
 
     private static String dateTimeSuffix(boolean function) {
-        String version = System.getProperty("test.mysql.version");
-        return version != null && isMicrosecondSupported(version) ? "(6)" : function ? "()" : "";
+        return isMicrosecondSupported() ? "(6)" : function ? "()" : "";
     }
 
-    private static boolean isMicrosecondSupported(String version) {
-        if (version.isEmpty()) {
-            return false;
-        }
+    private static boolean isMicrosecondSupported() {
+        final ServerVersion ver = TestServerUtil.getServerVersion();
 
-        ServerVersion ver = ServerVersion.parse(version);
-        String type = System.getProperty("test.db.type");
-
-        return "mariadb".equalsIgnoreCase(type) ||
+        return TestServerUtil.isMariaDb() ||
             ver.isGreaterThanOrEqualTo(ServerVersion.create(5, 6, 0));
     }
 

@@ -67,7 +67,7 @@ abstract class JacksonIntegrationTestSupport extends IntegrationTestSupport {
         JacksonCodecRegistrar.tearDown();
     }
 
-    @DisabledIf("envIsLessThanMySql57OrMariaDb102")
+    @DisabledIf("envIsLessThanMySql578OrMariaDb102")
     @Test
     void json() {
         create().flatMap(connection -> Mono.from(connection.createStatement(TDL).execute())

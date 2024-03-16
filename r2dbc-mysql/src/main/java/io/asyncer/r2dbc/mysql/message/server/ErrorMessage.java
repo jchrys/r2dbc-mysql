@@ -97,6 +97,7 @@ public final class ErrorMessage implements ServerMessage {
             case 1907: // Statement executing timeout
             case 3024: // Query execution was interrupted, maximum statement execution time exceeded
             case 1969: // Query execution was interrupted
+            case 1968: // Query execution was interrupted (max_statement_time exceeded)
                 return new R2dbcTimeoutException(message, sqlState, code);
             case 1613: // Transaction rollback because of took too long
                 return new R2dbcRollbackException(message, sqlState, code);
