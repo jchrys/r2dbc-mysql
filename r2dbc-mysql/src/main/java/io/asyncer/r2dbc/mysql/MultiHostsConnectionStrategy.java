@@ -17,19 +17,17 @@
 package io.asyncer.r2dbc.mysql;
 
 import io.asyncer.r2dbc.mysql.client.Client;
+import io.asyncer.r2dbc.mysql.client.FailoverClient;
+import io.asyncer.r2dbc.mysql.client.ReactorNettyClient;
 import io.asyncer.r2dbc.mysql.constant.ProtocolDriver;
 import io.asyncer.r2dbc.mysql.internal.NodeAddress;
 import io.asyncer.r2dbc.mysql.internal.util.InternalArrays;
-import io.netty.channel.ChannelOption;
 import io.netty.resolver.DefaultNameResolver;
 import io.netty.resolver.NameResolver;
 import io.netty.util.concurrent.Future;
-import io.r2dbc.spi.R2dbcNonTransientResourceException;
-import org.jetbrains.annotations.Nullable;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import reactor.netty.resources.LoopResources;
-import reactor.netty.tcp.TcpClient;
 import reactor.netty.tcp.TcpResources;
 
 import java.net.InetAddress;
@@ -46,105 +44,153 @@ import java.util.function.Function;
  */
 final class MultiHostsConnectionStrategy implements ConnectionStrategy {
 
-    private final Mono<Client> client;
+    private final Mono<? extends Client> client;
 
     MultiHostsConnectionStrategy(
-        TcpSocketConfiguration tcp,
         MySqlConnectionConfiguration configuration,
-        boolean shuffle
+        List<NodeAddress> addresses,
+        ProtocolDriver driver,
+        int retriesAllDown,
+        boolean shuffle,
+        boolean tcpKeepAlive,
+        boolean tcpNoDelay
     ) {
-        this.client = Mono.defer(() -> {
-            if (ProtocolDriver.DNS_SRV.equals(tcp.getDriver())) {
+        Mono<ReactorNettyClient> client = configuration.getCredential().flatMap(credential -> {
+            if (ProtocolDriver.DNS_SRV.equals(driver)) {
+                logger.debug("Resolve hosts via DNS SRV: {}", addresses);
+
                 LoopResources resources = configuration.getClient().getLoopResources();
                 LoopResources loopResources = resources == null ? TcpResources.get() : resources;
+                InetConnectFunction login = new InetConnectFunction(
+                    false,
+                    tcpKeepAlive,
+                    tcpNoDelay,
+                    credential,
+                    configuration
+                );
 
-                return resolveAllHosts(loopResources, tcp.getAddresses(), shuffle)
-                    .flatMap(addresses -> connectHost(addresses, tcp, configuration, false, shuffle, 0));
+                return resolveAllHosts(loopResources, addresses, shuffle).flatMap(addrs -> {
+                    logger.debug("Connect to multiple addresses: {}", addrs);
+
+                    return connectHost(
+                        addrs,
+                        login,
+                        shuffle,
+                        0,
+                        retriesAllDown
+                    );
+                });
             } else {
-                List<NodeAddress> availableHosts = copyAvailableAddresses(tcp.getAddresses(), shuffle);
+                List<NodeAddress> availableHosts = copyAvailableAddresses(addresses, shuffle);
+                logger.debug("Connect to multiple hosts: {}", availableHosts);
+
                 int size = availableHosts.size();
-                InetSocketAddress[] addresses = new InetSocketAddress[availableHosts.size()];
+                InetSocketAddress[] array = new InetSocketAddress[availableHosts.size()];
 
                 for (int i = 0; i < size; i++) {
-                    NodeAddress address = availableHosts.get(i);
-                    addresses[i] = InetSocketAddress.createUnresolved(address.getHost(), address.getPort());
+                    array[i] = availableHosts.get(i).toUnresolved();
                 }
 
-                return connectHost(InternalArrays.asImmutableList(addresses), tcp, configuration, true, shuffle, 0);
+                List<InetSocketAddress> addrs = InternalArrays.asImmutableList(array);
+                InetConnectFunction login = new InetConnectFunction(
+                    true,
+                    tcpKeepAlive,
+                    tcpNoDelay,
+                    credential,
+                    configuration
+                );
+
+                return connectHost(
+                    addrs,
+                    login,
+                    shuffle,
+                    0,
+                    retriesAllDown
+                );
             }
         });
+
+        this.client = client.map(c -> new FailoverClient(c, client));
     }
 
     @Override
-    public Mono<Client> connect() {
+    public Mono<? extends Client> connect() {
         return client;
     }
 
-    private Mono<Client> connectHost(
+    private static Mono<ReactorNettyClient> connectHost(
         List<InetSocketAddress> addresses,
-        TcpSocketConfiguration tcp,
-        MySqlConnectionConfiguration configuration,
-        boolean balancedDns,
+        InetConnectFunction login,
         boolean shuffle,
-        int attempts
+        int attempts,
+        int maxAttempts
     ) {
         Iterator<InetSocketAddress> iter = addresses.iterator();
 
         if (!iter.hasNext()) {
-            return Mono.error(fail("Fail to establish connection: no available host", null));
+            return Mono.error(ConnectionStrategy.retryFail("Fail to establish connection: no available host", null));
         }
 
-        return configuration.getCredential().flatMap(credential -> attemptConnect(
-            iter.next(), credential, tcp, configuration, balancedDns
-        ).onErrorResume(t -> resumeConnect(
-            t, addresses, iter, credential, tcp, configuration, balancedDns, shuffle, attempts
-        )));
+
+        InetSocketAddress address = iter.next();
+
+        return login.apply(() -> address).onErrorResume(error -> resumeConnect(
+            error,
+            address,
+            addresses,
+            iter,
+            login,
+            shuffle,
+            attempts,
+            maxAttempts
+        ));
     }
 
-    private Mono<Client> resumeConnect(
+    private static Mono<ReactorNettyClient> resumeConnect(
         Throwable t,
+        InetSocketAddress failed,
         List<InetSocketAddress> addresses,
         Iterator<InetSocketAddress> iter,
-        Credential credential,
-        TcpSocketConfiguration tcp,
-        MySqlConnectionConfiguration configuration,
-        boolean balancedDns,
+        InetConnectFunction login,
         boolean shuffle,
-        int attempts
+        int attempts,
+        int maxAttempts
     ) {
+        logger.warn("Fail to connect to {}", failed, t);
+
         if (!iter.hasNext()) {
             // The last host failed to connect
-            if (attempts >= tcp.getRetriesAllDown()) {
-                return Mono.error(fail(
-                    "Fail to establish connection, retried " + attempts + " times: " + t.getMessage(), t));
+            if (attempts >= maxAttempts) {
+                return Mono.error(ConnectionStrategy.retryFail(
+                    "Fail to establish connections, retried " + attempts + " times", t));
             }
 
-            logger.warn("All hosts failed to establish connections, auto-try again after 250ms.");
+            logger.warn("All hosts failed to establish connections, auto-try again after 250ms.", t);
 
             // Ignore waiting error, e.g. interrupted, scheduler rejected
             return Mono.delay(Duration.ofMillis(250))
                 .onErrorComplete()
-                .then(Mono.defer(() -> connectHost(addresses, tcp, configuration, balancedDns, shuffle, attempts + 1)));
+                .then(Mono.defer(() -> connectHost(
+                    addresses,
+                    login,
+                    shuffle,
+                    attempts + 1,
+                    maxAttempts
+                )));
         }
 
-        return attemptConnect(iter.next(), credential, tcp, configuration, balancedDns).onErrorResume(tt ->
-            resumeConnect(tt, addresses, iter, credential, tcp, configuration, balancedDns, shuffle, attempts));
-    }
+        InetSocketAddress address = iter.next();
 
-    private Mono<Client> attemptConnect(
-        InetSocketAddress address,
-        Credential credential,
-        TcpSocketConfiguration tcp,
-        MySqlConnectionConfiguration configuration,
-        boolean balancedDns
-    ) {
-        TcpClient tcpClient = ConnectionStrategy.createTcpClient(configuration.getClient(), balancedDns)
-            .option(ChannelOption.SO_KEEPALIVE, tcp.isTcpKeepAlive())
-            .option(ChannelOption.TCP_NODELAY, tcp.isTcpNoDelay())
-            .remoteAddress(() -> address);
-
-        return ConnectionStrategy.connectWithInit(tcpClient, credential, configuration)
-            .doOnError(e -> logger.warn("Fail to connect: ", e));
+        return login.apply(() -> address).onErrorResume(error -> resumeConnect(
+            error,
+            address,
+            addresses,
+            iter,
+            login,
+            shuffle,
+            attempts,
+            maxAttempts
+        ));
     }
 
     private static Mono<List<InetSocketAddress>> resolveAllHosts(
@@ -202,14 +248,5 @@ final class MultiHostsConnectionStrategy implements ConnectionStrategy {
         }
 
         return InternalArrays.asImmutableList(addresses.toArray(new NodeAddress[0]));
-    }
-
-    private static R2dbcNonTransientResourceException fail(String message, @Nullable Throwable cause) {
-        return new R2dbcNonTransientResourceException(
-            message,
-            "H1000",
-            9000,
-            cause
-        );
     }
 }

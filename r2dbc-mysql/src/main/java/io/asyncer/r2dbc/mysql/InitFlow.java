@@ -22,6 +22,7 @@ import io.asyncer.r2dbc.mysql.cache.Caches;
 import io.asyncer.r2dbc.mysql.cache.PrepareCache;
 import io.asyncer.r2dbc.mysql.client.Client;
 import io.asyncer.r2dbc.mysql.client.FluxExchangeable;
+import io.asyncer.r2dbc.mysql.client.ReactorNettyClient;
 import io.asyncer.r2dbc.mysql.codec.Codecs;
 import io.asyncer.r2dbc.mysql.codec.CodecsBuilder;
 import io.asyncer.r2dbc.mysql.constant.CompressionAlgorithm;
@@ -75,7 +76,7 @@ import java.util.function.BiConsumer;
 import java.util.function.Function;
 
 /**
- * A message flow utility that can initializes the session of {@link Client}.
+ * A message flow utility that can initializes the session of {@link ReactorNettyClient}.
  * <p>
  * It should not use server-side prepared statements, because {@link PrepareCache} will be initialized after the session
  * is initialized.
@@ -117,9 +118,9 @@ final class InitFlow {
     };
 
     /**
-     * Initializes handshake and login a {@link Client}.
+     * Initializes handshake and login a {@link ReactorNettyClient}.
      *
-     * @param client                the {@link Client} to exchange messages with.
+     * @param client                the {@link ReactorNettyClient} to exchange messages with.
      * @param sslMode               the {@link SslMode} defines SSL capability and behavior.
      * @param database              the database that will be connected.
      * @param user                  the user that will be login.
@@ -128,7 +129,7 @@ final class InitFlow {
      * @param zstdCompressionLevel  the zstd compression level.
      * @return a {@link Mono} that indicates the initialization is done, or an error if the initialization failed.
      */
-    static Mono<Void> initHandshake(Client client, SslMode sslMode, String database, String user,
+    static Mono<Void> initHandshake(ReactorNettyClient client, SslMode sslMode, String database, String user,
         @Nullable CharSequence password, Set<CompressionAlgorithm> compressionAlgorithms, int zstdCompressionLevel) {
         return client.exchange(new HandshakeExchangeable(
             client,
@@ -488,7 +489,7 @@ final class HandshakeExchangeable extends FluxExchangeable<Void> {
     private final Sinks.Many<SubsequenceClientMessage> requests = Sinks.many().unicast()
         .onBackpressureBuffer(Queues.<SubsequenceClientMessage>one().get());
 
-    private final Client client;
+    private final ReactorNettyClient client;
 
     private final SslMode sslMode;
 
@@ -511,7 +512,7 @@ final class HandshakeExchangeable extends FluxExchangeable<Void> {
 
     private boolean sslCompleted;
 
-    HandshakeExchangeable(Client client, SslMode sslMode, String database, String user,
+    HandshakeExchangeable(ReactorNettyClient client, SslMode sslMode, String database, String user,
         @Nullable CharSequence password, Set<CompressionAlgorithm> compressions,
         int zstdCompressionLevel) {
         this.client = client;

@@ -67,6 +67,18 @@ public final class MySqlConnectionFactoryProvider implements ConnectionFactoryPr
     public static final Option<String> UNIX_SOCKET = Option.valueOf("unixSocket");
 
     /**
+     * Option to whether to perform failover reconnection.  Default to {@code false}.
+     * <p>
+     * It is not recommended due to it may lead to unexpected results. For example, it may recover a transaction state
+     * from a failed server node to an available node, the user can not aware of it, and continuing to execute more
+     * queries in the transaction will lead to unexpected inconsistencies or errors. Or, user set a self-defined
+     * variable in the session, it may not be recovered to the new node due to the driver can not aware of it.
+     *
+     * @since 1.2.0
+     */
+    public static final Option<Boolean> AUTO_RECONNECT = Option.valueOf("autoReconnect");
+
+    /**
      * Option to set the time zone conversion.  Default to {@code true} means enable conversion between JVM and
      * {@link #CONNECTION_TIME_ZONE}.
      * <p>
@@ -361,6 +373,8 @@ public final class MySqlConnectionFactoryProvider implements ConnectionFactoryPr
 
         mapper.optional(FORCE_CONNECTION_TIME_ZONE_TO_SESSION).asBoolean()
             .to(builder::forceConnectionTimeZoneToSession);
+        mapper.optional(AUTO_RECONNECT).asBoolean()
+            .to(builder::autoReconnect);
         mapper.optional(TCP_KEEP_ALIVE).asBoolean()
             .to(builder::tcpKeepAlive);
         mapper.optional(TCP_NO_DELAY).asBoolean()

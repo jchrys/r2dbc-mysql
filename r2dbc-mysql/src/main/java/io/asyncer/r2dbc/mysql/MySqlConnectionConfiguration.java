@@ -64,6 +64,8 @@ public final class MySqlConnectionConfiguration {
 
     private final MySqlSslConfiguration ssl;
 
+    private final boolean autoReconnect;
+
     private final boolean preserveInstants;
 
     private final String connectionTimeZone;
@@ -110,6 +112,7 @@ public final class MySqlConnectionConfiguration {
         SocketClientConfiguration client,
         SocketConfiguration socket,
         MySqlSslConfiguration ssl,
+        boolean autoReconnect,
         ZeroDateOption zeroDateOption,
         boolean preserveInstants,
         String connectionTimeZone,
@@ -127,6 +130,7 @@ public final class MySqlConnectionConfiguration {
         this.client = requireNonNull(client, "client must not be null");
         this.socket = requireNonNull(socket, "socket must not be null");
         this.ssl = requireNonNull(ssl, "ssl must not be null");
+        this.autoReconnect = autoReconnect;
         this.preserveInstants = preserveInstants;
         this.connectionTimeZone = requireNonNull(connectionTimeZone, "connectionTimeZone must not be null");
         this.forceConnectionTimeZoneToSession = forceConnectionTimeZoneToSession;
@@ -167,6 +171,10 @@ public final class MySqlConnectionConfiguration {
 
     MySqlSslConfiguration getSsl() {
         return ssl;
+    }
+
+    boolean isAutoReconnect() {
+        return autoReconnect;
     }
 
     ZeroDateOption getZeroDateOption() {
@@ -272,6 +280,7 @@ public final class MySqlConnectionConfiguration {
         return client.equals(that.client) &&
             socket.equals(that.socket) &&
             ssl.equals(that.ssl) &&
+            autoReconnect == that.autoReconnect &&
             preserveInstants == that.preserveInstants &&
             connectionTimeZone.equals(that.connectionTimeZone) &&
             forceConnectionTimeZoneToSession == that.forceConnectionTimeZoneToSession &&
@@ -298,6 +307,7 @@ public final class MySqlConnectionConfiguration {
         return Objects.hash(
             client,
             socket, ssl,
+            autoReconnect,
             preserveInstants,
             connectionTimeZone,
             forceConnectionTimeZoneToSession,
@@ -320,6 +330,7 @@ public final class MySqlConnectionConfiguration {
         return "MySqlConnectionConfiguration{client=" + client +
             ", socket=" + socket +
             ", ssl=" + ssl +
+            ", autoReconnect=" + autoReconnect +
             ", preserveInstants=" + preserveInstants +
             ", connectionTimeZone='" + connectionTimeZone + '\'' +
             ", forceConnectionTimeZoneToSession=" + forceConnectionTimeZoneToSession +
@@ -356,6 +367,8 @@ public final class MySqlConnectionConfiguration {
         private UnixDomainSocketConfiguration.Builder unixSocket;
 
         private final MySqlSslConfiguration.Builder ssl = new MySqlSslConfiguration.Builder();
+
+        private boolean autoReconnect;
 
         @Nullable
         private String database;
@@ -434,6 +447,7 @@ public final class MySqlConnectionConfiguration {
                 client.build(),
                 socket,
                 ssl.build(preferredSsl),
+                autoReconnect,
                 zeroDateOption,
                 preserveInstants,
                 connectionTimeZone,
@@ -597,6 +611,23 @@ public final class MySqlConnectionConfiguration {
             requireNonNull(protocol, "protocol must not be null");
 
             requireTcpSocket().protocol(protocol);
+            return this;
+        }
+
+        /**
+         * Configures whether to perform failover reconnection.  Default is {@code false}.
+         * <p>
+         * It is not recommended due to it may lead to unexpected results. For example, it may recover a transaction
+         * state from a failed server node to an available node, the user can not aware of it, and continuing to execute
+         * more queries in the transaction will lead to unexpected inconsistencies.
+         *
+         * @param enabled {@code true} to enable failover reconnection.
+         * @return {@link Builder this}
+         * @see <a href="https://dev.mysql.com/doc/connector-j/en/connector-j-config-failover.html">JDBC Failover</a>
+         * @since 1.2.0
+         */
+        public Builder autoReconnect(boolean enabled) {
+            this.autoReconnect = enabled;
             return this;
         }
 

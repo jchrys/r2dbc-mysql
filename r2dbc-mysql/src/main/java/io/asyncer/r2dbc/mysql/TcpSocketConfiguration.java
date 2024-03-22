@@ -219,16 +219,48 @@ final class TcpSocketConfiguration implements SocketConfiguration {
             case REPLICATION:
                 ConnectionStrategy.logger.warn(
                     "R2DBC Connection cannot be set to read-only, replication protocol will use the first host");
-                return new SingleHostConnectionStrategy(this, configuration);
+                return new MultiHostsConnectionStrategy(
+                    configuration,
+                    Collections.singletonList(getFirstAddress()),
+                    driver,
+                    retriesAllDown,
+                    false,
+                    tcpKeepAlive,
+                    tcpNoDelay
+                );
             case SEQUENTIAL:
-                return new MultiHostsConnectionStrategy(this, configuration, false);
+                return new MultiHostsConnectionStrategy(
+                    configuration,
+                    addresses,
+                    driver,
+                    retriesAllDown,
+                    false,
+                    tcpKeepAlive,
+                    tcpNoDelay
+                );
             case LOAD_BALANCE:
-                return new MultiHostsConnectionStrategy(this, configuration, true);
+                return new MultiHostsConnectionStrategy(
+                    configuration,
+                    addresses,
+                    driver,
+                    retriesAllDown,
+                    true,
+                    tcpKeepAlive,
+                    tcpNoDelay
+                );
             default:
                 if (ProtocolDriver.MYSQL == driver && addresses.size() == 1) {
-                    return new SingleHostConnectionStrategy(this, configuration);
+                    return new SingleHostConnectionStrategy(configuration, getFirstAddress(), tcpKeepAlive, tcpNoDelay);
                 } else {
-                    return new MultiHostsConnectionStrategy(this, configuration, false);
+                    return new MultiHostsConnectionStrategy(
+                        configuration,
+                        addresses,
+                        driver,
+                        retriesAllDown,
+                        false,
+                        tcpKeepAlive,
+                        tcpNoDelay
+                    );
                 }
         }
     }

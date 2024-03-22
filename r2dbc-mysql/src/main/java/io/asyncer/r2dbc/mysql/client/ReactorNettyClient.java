@@ -41,6 +41,7 @@ import reactor.core.publisher.Sinks.EmitFailureHandler;
 import reactor.core.publisher.SynchronousSink;
 import reactor.netty.Connection;
 import reactor.netty.FutureMono;
+import reactor.netty.tcp.TcpClient;
 import reactor.util.context.Context;
 import reactor.util.context.ContextView;
 
@@ -54,7 +55,7 @@ import static io.asyncer.r2dbc.mysql.internal.util.AssertUtils.requireNonNull;
 /**
  * An implementation of client based on the Reactor Netty project.
  */
-final class ReactorNettyClient implements Client {
+public final class ReactorNettyClient implements Client {
 
     private static final InternalLogger logger = InternalLoggerFactory.getInstance(ReactorNettyClient.class);
 
@@ -250,18 +251,24 @@ final class ReactorNettyClient implements Client {
         return state < ST_CLOSED && connection.channel().isOpen();
     }
 
-    @Override
     public void sslUnsupported() {
         connection.channel().pipeline().fireUserEventTriggered(SslState.UNSUPPORTED);
     }
 
-    @Override
     public void loginSuccess() {
         if (context.getCapability().isCompression()) {
             connection.channel().pipeline().fireUserEventTriggered(PacketEvent.USE_COMPRESSION);
         } else {
             resetSequence(connection);
         }
+    }
+
+    boolean isClosingOrClosed() {
+        return state >= ST_CLOSING;
+    }
+
+    boolean isChannelOpen() {
+        return connection.channel().isOpen();
     }
 
     private static void resetSequence(Connection connection) {
@@ -322,6 +329,27 @@ final class ReactorNettyClient implements Client {
             logger.debug("Connection closed");
             drainError(ClientExceptions.expectedClosed());
         }
+    }
+
+    /**
+     * Connects to a MySQL server using the provided {@link TcpClient} and {@link MySqlSslConfiguration}.
+     *
+     * @param tcpClient the configured TCP client
+     * @param ssl       the SSL configuration
+     * @param context   the connection context
+     * @return A {@link Mono} that will emit a connected {@link Client}.
+     * @throws IllegalArgumentException if {@code tcpClient}, {@code ssl} or {@code context} is {@code null}.
+     */
+    public static Mono<ReactorNettyClient> connect(
+        TcpClient tcpClient,
+        MySqlSslConfiguration ssl,
+        ConnectionContext context
+    ) {
+        requireNonNull(tcpClient, "tcpClient must not be null");
+        requireNonNull(ssl, "ssl must not be null");
+        requireNonNull(context, "context must not be null");
+
+        return tcpClient.connect().map(conn -> new ReactorNettyClient(conn, ssl, context));
     }
 
     private final class ResponseSubscriber implements CoreSubscriber<Object> {

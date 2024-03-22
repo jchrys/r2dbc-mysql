@@ -17,10 +17,11 @@
 package io.asyncer.r2dbc.mysql;
 
 import io.asyncer.r2dbc.mysql.client.Client;
+import io.asyncer.r2dbc.mysql.client.ReactorNettyClient;
 import io.asyncer.r2dbc.mysql.internal.NodeAddress;
-import io.netty.channel.ChannelOption;
 import reactor.core.publisher.Mono;
-import reactor.netty.tcp.TcpClient;
+
+import java.time.Duration;
 
 /**
  * An implementation of {@link ConnectionStrategy} that connects to a single host. It can be wrapped to a
@@ -30,23 +31,66 @@ final class SingleHostConnectionStrategy implements ConnectionStrategy {
 
     private final Mono<Client> client;
 
-    SingleHostConnectionStrategy(TcpSocketConfiguration socket, MySqlConnectionConfiguration configuration) {
+    SingleHostConnectionStrategy(
+        MySqlConnectionConfiguration configuration,
+        NodeAddress address,
+        boolean tcpKeepAlive,
+        boolean tcpNoDelay
+    ) {
         this.client = configuration.getCredential().flatMap(credential -> {
-            NodeAddress address = socket.getFirstAddress();
-
             logger.debug("Connect to a single host: {}", address);
 
-            TcpClient tcpClient = ConnectionStrategy.createTcpClient(configuration.getClient(), true)
-                .option(ChannelOption.SO_KEEPALIVE, socket.isTcpKeepAlive())
-                .option(ChannelOption.TCP_NODELAY, socket.isTcpNoDelay())
-                .remoteAddress(address::toUnresolved);
+            InetConnectFunction login = new InetConnectFunction(
+                true,
+                tcpKeepAlive,
+                tcpNoDelay,
+                credential,
+                configuration
+            );
 
-            return ConnectionStrategy.connectWithInit(tcpClient, credential, configuration);
+            return connectHost(login, address, 0, 3);
         });
     }
 
     @Override
     public Mono<Client> connect() {
         return client;
+    }
+
+    private static Mono<ReactorNettyClient> connectHost(
+        InetConnectFunction login,
+        NodeAddress address,
+        int attempts,
+        int maxAttempts
+    ) {
+        return login.apply(address::toUnresolved)
+            .onErrorResume(t -> resumeConnect(t, address, login, attempts, maxAttempts));
+    }
+
+    private static Mono<ReactorNettyClient> resumeConnect(
+        Throwable t,
+        NodeAddress address,
+        InetConnectFunction login,
+        int attempts,
+        int maxAttempts
+    ) {
+        logger.warn("Fail to connect to {}", address, t);
+
+        if (attempts >= maxAttempts) {
+            return Mono.error(ConnectionStrategy.retryFail(
+                "Fail to establish connection, retried " + attempts + " times", t));
+        }
+
+        logger.warn("Failed to establish connection, auto-try again after 250ms.", t);
+
+        // Ignore waiting error, e.g. interrupted, scheduler rejected
+        return Mono.delay(Duration.ofMillis(250))
+            .onErrorComplete()
+            .then(Mono.defer(() -> connectHost(
+                login,
+                address,
+                attempts + 1,
+                maxAttempts
+            )));
     }
 }

@@ -62,8 +62,8 @@ public enum HaProtocol {
      * <p>
      * Using: I want to use the first node for read-write if connection is set to read-write, and other nodes if
      * connection is set to read-only. R2DBC can not set a {@link io.r2dbc.spi.Connection Connection} to read-only mode.
-     * So it will always use the first host. R2DBC does not recommend this mutability. Perhaps in the future, R2DBC will
-     * support using read-only mode to create a connection instead of modifying an existing connection.
+     * So it will always use the first host. Perhaps in the future, R2DBC will support using read-only mode to create a
+     * connection instead of modifying an existing connection.
      * <p>
      * Reconnect: I want to reconnect to the current node if the current node is unavailable  and
      * {@code autoReconnect=true}.

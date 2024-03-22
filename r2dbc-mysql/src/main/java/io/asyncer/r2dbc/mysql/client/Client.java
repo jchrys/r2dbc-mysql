@@ -17,7 +17,6 @@
 package io.asyncer.r2dbc.mysql.client;
 
 import io.asyncer.r2dbc.mysql.ConnectionContext;
-import io.asyncer.r2dbc.mysql.MySqlSslConfiguration;
 import io.asyncer.r2dbc.mysql.message.client.ClientMessage;
 import io.asyncer.r2dbc.mysql.message.server.ServerMessage;
 import io.netty.buffer.ByteBufAllocator;
@@ -26,11 +25,8 @@ import io.netty.util.internal.logging.InternalLoggerFactory;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import reactor.core.publisher.SynchronousSink;
-import reactor.netty.tcp.TcpClient;
 
 import java.util.function.BiConsumer;
-
-import static io.asyncer.r2dbc.mysql.internal.util.AssertUtils.requireNonNull;
 
 /**
  * An abstraction that wraps the networking part of exchanging methods.
@@ -99,31 +95,4 @@ public interface Client {
      * @return if connection is valid
      */
     boolean isConnected();
-
-    /**
-     * Sends a signal to the connection, which means server does not support SSL.
-     */
-    void sslUnsupported();
-
-    /**
-     * Sends a signal to {@link Client this}, which means login has succeeded.
-     */
-    void loginSuccess();
-
-    /**
-     * Connects to a MySQL server using the provided {@link TcpClient} and {@link MySqlSslConfiguration}.
-     *
-     * @param tcpClient the configured TCP client
-     * @param ssl       the SSL configuration
-     * @param context   the connection context
-     * @return A {@link Mono} that will emit a connected {@link Client}.
-     * @throws IllegalArgumentException if {@code tcpClient}, {@code ssl} or {@code context} is {@code null}.
-     */
-    static Mono<Client> connect(TcpClient tcpClient, MySqlSslConfiguration ssl, ConnectionContext context) {
-        requireNonNull(tcpClient, "tcpClient must not be null");
-        requireNonNull(ssl, "ssl must not be null");
-        requireNonNull(context, "context must not be null");
-
-        return tcpClient.connect().map(conn -> new ReactorNettyClient(conn, ssl, context));
-    }
 }

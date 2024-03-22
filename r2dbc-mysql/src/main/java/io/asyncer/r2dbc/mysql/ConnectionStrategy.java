@@ -17,6 +17,7 @@
 package io.asyncer.r2dbc.mysql;
 
 import io.asyncer.r2dbc.mysql.client.Client;
+import io.asyncer.r2dbc.mysql.client.ReactorNettyClient;
 import io.asyncer.r2dbc.mysql.internal.util.StringUtils;
 import io.netty.channel.ChannelOption;
 import io.netty.resolver.AddressResolver;
@@ -26,6 +27,8 @@ import io.netty.resolver.RoundRobinInetAddressResolver;
 import io.netty.util.concurrent.EventExecutor;
 import io.netty.util.internal.logging.InternalLogger;
 import io.netty.util.internal.logging.InternalLoggerFactory;
+import io.r2dbc.spi.R2dbcNonTransientResourceException;
+import org.jetbrains.annotations.Nullable;
 import reactor.core.publisher.Mono;
 import reactor.netty.resources.LoopResources;
 import reactor.netty.tcp.TcpClient;
@@ -33,6 +36,8 @@ import reactor.netty.tcp.TcpClient;
 import java.net.InetSocketAddress;
 import java.time.Duration;
 import java.time.ZoneId;
+import java.util.function.Function;
+import java.util.function.Supplier;
 
 /**
  * An interface of a connection strategy that considers how to obtain a MySQL {@link Client} object.
@@ -49,7 +54,7 @@ interface ConnectionStrategy {
      *
      * @return a logged-in {@link Client} object.
      */
-    Mono<Client> connect();
+    Mono<? extends Client> connect();
 
     /**
      * Creates a general-purpose {@link TcpClient} with the given {@link SocketClientConfiguration}.
@@ -87,7 +92,7 @@ interface ConnectionStrategy {
      * @param configuration a configuration that affects login behavior.
      * @return a logged-in {@link Client} object.
      */
-    static Mono<Client> connectWithInit(
+    static Mono<ReactorNettyClient> connectWithInit(
         TcpClient tcpClient,
         Credential credential,
         MySqlConnectionConfiguration configuration
@@ -110,7 +115,7 @@ interface ConnectionStrategy {
                 configuration.isPreserveInstants(),
                 connectionTimeZone
             );
-        }).flatMap(context -> Client.connect(tcpClient, configuration.getSsl(), context)).flatMap(client -> {
+        }).flatMap(ctx -> ReactorNettyClient.connect(tcpClient, configuration.getSsl(), ctx)).flatMap(client -> {
             // Lazy init database after handshake/login
             MySqlSslConfiguration ssl = configuration.getSsl();
             String loginDb = configuration.isCreateDatabaseIfNotExist() ? "" : configuration.getDatabase();
@@ -126,30 +131,88 @@ interface ConnectionStrategy {
             ).then(Mono.just(client)).onErrorResume(e -> client.forceClose().then(Mono.error(e)));
         });
     }
-}
 
-/**
- * Resolves the {@link InetSocketAddress} to IP address, randomly pick one if it resolves to multiple IP addresses.
- *
- * @since 1.2.0
- */
-final class BalancedResolverGroup extends AddressResolverGroup<InetSocketAddress> {
-
-    BalancedResolverGroup() {
+    /**
+     * Creates an exception that indicates a retry failure.
+     *
+     * @param message the message of the exception.
+     * @param cause   the last exception that caused the retry.
+     * @return a retry failure exception.
+     */
+    static R2dbcNonTransientResourceException retryFail(String message, @Nullable Throwable cause) {
+        return new R2dbcNonTransientResourceException(
+            message,
+            "H1000",
+            9000,
+            cause
+        );
     }
 
-    public static final BalancedResolverGroup INSTANCE;
+    /**
+     * Connect and login to a MySQL server with a specific TCP socket address.
+     *
+     * @since 1.2.0
+     */
+    final class InetConnectFunction implements Function<Supplier<InetSocketAddress>, Mono<ReactorNettyClient>> {
 
-    static {
-        INSTANCE = new BalancedResolverGroup();
-        Runtime.getRuntime().addShutdownHook(new Thread(
-            INSTANCE::close,
-            "R2DBC-MySQL-BalancedResolverGroup-ShutdownHook"
-        ));
+        private final boolean balancedDns;
+
+        private final boolean tcpKeepAlive;
+
+        private final boolean tcpNoDelay;
+
+        private final Credential credential;
+
+        private final MySqlConnectionConfiguration configuration;
+
+        InetConnectFunction(
+            boolean balancedDns,
+            boolean tcpKeepAlive,
+            boolean tcpNoDelay,
+            Credential credential,
+            MySqlConnectionConfiguration configuration
+        ) {
+            this.balancedDns = balancedDns;
+            this.tcpKeepAlive = tcpKeepAlive;
+            this.tcpNoDelay = tcpNoDelay;
+            this.credential = credential;
+            this.configuration = configuration;
+        }
+
+        @Override
+        public Mono<ReactorNettyClient> apply(Supplier<InetSocketAddress> address) {
+            TcpClient client = ConnectionStrategy.createTcpClient(configuration.getClient(), balancedDns)
+                .option(ChannelOption.SO_KEEPALIVE, tcpKeepAlive)
+                .option(ChannelOption.TCP_NODELAY, tcpNoDelay)
+                .remoteAddress(address);
+
+            return ConnectionStrategy.connectWithInit(client, credential, configuration);
+        }
     }
 
-    @Override
-    protected AddressResolver<InetSocketAddress> newResolver(EventExecutor executor) {
-        return new RoundRobinInetAddressResolver(executor, new DefaultNameResolver(executor)).asAddressResolver();
+    /**
+     * Resolves the {@link InetSocketAddress} to IP address, randomly pick one if it resolves to multiple IP addresses.
+     *
+     * @since 1.2.0
+     */
+    final class BalancedResolverGroup extends AddressResolverGroup<InetSocketAddress> {
+
+        BalancedResolverGroup() {
+        }
+
+        public static final BalancedResolverGroup INSTANCE;
+
+        static {
+            INSTANCE = new BalancedResolverGroup();
+            Runtime.getRuntime().addShutdownHook(new Thread(
+                INSTANCE::close,
+                "R2DBC-MySQL-BalancedResolverGroup-ShutdownHook"
+            ));
+        }
+
+        @Override
+        protected AddressResolver<InetSocketAddress> newResolver(EventExecutor executor) {
+            return new RoundRobinInetAddressResolver(executor, new DefaultNameResolver(executor)).asAddressResolver();
+        }
     }
 }
