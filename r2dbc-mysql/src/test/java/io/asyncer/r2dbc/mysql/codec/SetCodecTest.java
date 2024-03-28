@@ -129,7 +129,7 @@ class SetCodecTest implements CodecTestSupport<String[]> {
         Query query = Query.parse("?");
 
         for (int i = 0; i < sets.length; ++i) {
-            ParameterWriter writer = ParameterWriterHelper.get(query);
+            ParameterWriter writer = ParameterWriterHelper.get(false, query);
             codec.encode(sets[i], context())
                 .publishText(writer)
                 .as(StepVerifier::create)

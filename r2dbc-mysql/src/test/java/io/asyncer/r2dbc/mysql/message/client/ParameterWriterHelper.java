@@ -45,10 +45,10 @@ public final class ParameterWriterHelper {
         ReflectionUtils.findMethod(ParamWriter.class, "toSql")
             .orElseThrow(RuntimeException::new);
 
-    public static ParameterWriter get(Query query) {
+    public static ParameterWriter get(boolean noBackslashEscapes, Query query) {
         assertThat(query.getPartSize()).isGreaterThan(1);
 
-        return ReflectionUtils.newInstance(CONSTRUCTOR, query);
+        return ReflectionUtils.newInstance(CONSTRUCTOR, noBackslashEscapes, query);
     }
 
     public static String toSql(ParameterWriter writer) {

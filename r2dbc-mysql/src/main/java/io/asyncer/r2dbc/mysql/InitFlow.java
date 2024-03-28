@@ -209,31 +209,31 @@ final class InitFlow {
         Codecs codecs,
         @Nullable Duration lockWaitTimeout
     ) {
-        return new TextSimpleStatement(client, codecs, "SHOW VARIABLES LIKE 'innodb\\\\_lock\\\\_wait\\\\_timeout'")
-            .execute()
-            .flatMap(r -> r.map(readable -> {
-                String value = readable.get(1, String.class);
+        return new TextSimpleStatement(
+            client,
+            codecs,
+            "SHOW VARIABLES LIKE 'innodb_lock_wait_timeout'"
+        ).execute().flatMap(r -> r.map(readable -> {
+            String value = readable.get(1, String.class);
 
-                if (value == null || value.isEmpty()) {
-                    return data;
-                } else {
-                    return data.lockWaitTimeout(Duration.ofSeconds(Long.parseLong(value)));
+            if (value == null || value.isEmpty()) {
+                return data;
+            } else {
+                return data.lockWaitTimeout(Duration.ofSeconds(Long.parseLong(value)));
+            }
+        })).single(data).flatMap(d -> {
+            if (lockWaitTimeout != null) {
+                // Do not use context.isLockWaitTimeoutSupported() here, because its session variable is not set
+                if (d.lockWaitTimeoutSupported) {
+                    return QueryFlow.executeVoid(client, StringUtils.lockWaitTimeoutStatement(lockWaitTimeout))
+                        .then(Mono.fromSupplier(() -> d.lockWaitTimeout(lockWaitTimeout)));
                 }
-            }))
-            .single(data)
-            .flatMap(d -> {
-                if (lockWaitTimeout != null) {
-                    // Do not use context.isLockWaitTimeoutSupported() here, because its session variable is not set
-                    if (d.lockWaitTimeoutSupported) {
-                        return QueryFlow.executeVoid(client, StringUtils.lockWaitTimeoutStatement(lockWaitTimeout))
-                            .then(Mono.fromSupplier(() -> d.lockWaitTimeout(lockWaitTimeout)));
-                    }
 
-                    logger.warn("Lock wait timeout is not supported by server, ignore initial setting");
-                    return Mono.just(d);
-                }
+                logger.warn("Lock wait timeout is not supported by server, ignore initial setting");
                 return Mono.just(d);
-            });
+            }
+            return Mono.just(d);
+        });
     }
 
     private static Mono<SessionState> loadSessionVariables(Client client, Codecs codecs) {

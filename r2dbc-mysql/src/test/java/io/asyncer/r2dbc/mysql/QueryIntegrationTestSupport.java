@@ -564,7 +564,7 @@ abstract class QueryIntegrationTestSupport extends IntegrationTestSupport {
                 .bind(2, 20)
                 .execute())
             .flatMap(IntegrationTestSupport::extractRowsUpdated)
-            .doOnNext(it -> assertThat(it).isOne()) // TODO: check capability flag
+            .doOnNext(it -> assertThat(it).isOne())
             .thenMany(connection.createStatement("SELECT value FROM test WHERE id=?")
                 .bind(0, 1)
                 .execute())

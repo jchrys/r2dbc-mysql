@@ -216,6 +216,10 @@ public final class ConnectionContext implements CodecContext {
         return (capability != null && capability.isMariaDb()) || serverVersion.isMariaDb();
     }
 
+    public boolean isNoBackslashEscapes() {
+        return (serverStatuses & ServerStatuses.NO_BACKSLASH_ESCAPES) != 0;
+    }
+
     @Override
     public ZeroDateOption getZeroDateOption() {
         return zeroDateOption;

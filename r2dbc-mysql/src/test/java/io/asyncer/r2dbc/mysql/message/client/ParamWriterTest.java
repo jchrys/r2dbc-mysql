@@ -18,6 +18,8 @@ package io.asyncer.r2dbc.mysql.message.client;
 
 import io.asyncer.r2dbc.mysql.Query;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import reactor.core.publisher.Flux;
 import reactor.test.StepVerifier;
 
@@ -84,42 +86,42 @@ class ParamWriterTest {
 
     @Test
     void appendPart() {
-        ParamWriter writer = (ParamWriter) ParameterWriterHelper.get(parameterOnly(1));
+        ParamWriter writer = (ParamWriter) ParameterWriterHelper.get(false, parameterOnly(1));
         writer.append("define", 2, 5);
         assertThat(ParameterWriterHelper.toSql(writer)).isEqualTo("'fin'");
     }
 
     @Test
     void writePart() {
-        ParamWriter writer = (ParamWriter) ParameterWriterHelper.get(parameterOnly(1));
+        ParamWriter writer = (ParamWriter) ParameterWriterHelper.get(false, parameterOnly(1));
         writer.write("define", 2, 3);
         assertThat(ParameterWriterHelper.toSql(writer)).isEqualTo("'fin'");
     }
 
     @Test
     void appendNull() {
-        assertThat(ParameterWriterHelper.toSql(ParameterWriterHelper.get(parameterOnly(1)).append(null)))
+        assertThat(ParameterWriterHelper.toSql(ParameterWriterHelper.get(false, parameterOnly(1)).append(null)))
             .isEqualTo("'null'");
-        assertThat(ParameterWriterHelper.toSql(ParameterWriterHelper.get(parameterOnly(1))
+        assertThat(ParameterWriterHelper.toSql(ParameterWriterHelper.get(false, parameterOnly(1))
             .append(null, 1, 3)))
             .isEqualTo("'ul'");
     }
 
     @Test
     void writeNull() {
-        ParamWriter writer = (ParamWriter) ParameterWriterHelper.get(parameterOnly(1));
+        ParamWriter writer = (ParamWriter) ParameterWriterHelper.get(false, parameterOnly(1));
         writer.write((String) null);
         assertThat(ParameterWriterHelper.toSql(writer)).isEqualTo("'null'");
 
-        writer = (ParamWriter) ParameterWriterHelper.get(parameterOnly(1));
+        writer = (ParamWriter) ParameterWriterHelper.get(false, parameterOnly(1));
         writer.write((String) null, 1, 2);
         assertThat(ParameterWriterHelper.toSql(writer)).isEqualTo("'ul'");
 
-        writer = (ParamWriter) ParameterWriterHelper.get(parameterOnly(1));
+        writer = (ParamWriter) ParameterWriterHelper.get(false, parameterOnly(1));
         writer.write((char[]) null);
         assertThat(ParameterWriterHelper.toSql(writer)).isEqualTo("'null'");
 
-        writer = (ParamWriter) ParameterWriterHelper.get(parameterOnly(1));
+        writer = (ParamWriter) ParameterWriterHelper.get(false, parameterOnly(1));
         writer.write((char[]) null, 1, 2);
         assertThat(ParameterWriterHelper.toSql(writer)).isEqualTo("'ul'");
     }
@@ -132,7 +134,7 @@ class ParamWriterTest {
             values[i] = new MockMySqlParameter(true);
         }
 
-        Flux.from(ParamWriter.publish(parameterOnly(SIZE), Flux.fromArray(values)))
+        Flux.from(ParamWriter.publish(false, parameterOnly(SIZE), Flux.fromArray(values)))
             .as(StepVerifier::create)
             .expectNext(new String(new char[SIZE]).replace("\0", "''"))
             .verifyComplete();
@@ -154,7 +156,7 @@ class ParamWriterTest {
             values[i] = new MockMySqlParameter(false);
         }
 
-        Flux.from(ParamWriter.publish(parameterOnly(SIZE), Flux.fromArray(values)))
+        Flux.from(ParamWriter.publish(false, parameterOnly(SIZE), Flux.fromArray(values)))
             .as(StepVerifier::create)
             .verifyError(MockException.class);
 
@@ -169,11 +171,28 @@ class ParamWriterTest {
             values[i] = new MockMySqlParameter(false);
         }
 
-        Flux.from(ParamWriter.publish(parameterOnly(SIZE), Flux.fromArray(values)))
+        Flux.from(ParamWriter.publish(false, parameterOnly(SIZE), Flux.fromArray(values)))
             .as(StepVerifier::create)
             .verifyError(MockException.class);
 
         assertThat(values).extracting(MockMySqlParameter::refCnt).containsOnly(0);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+        "abc",
+        "a'b'c",
+        "a\nb\rc",
+        "a\"b\"c",
+        "a\\b\\c",
+        "a\0b\0c",
+        "a\u00a5b\u20a9c",
+        "a\032b\032c",
+    })
+    void noBackslashEscapes(String value) {
+        ParamWriter writer = (ParamWriter) ParameterWriterHelper.get(true, parameterOnly(1));
+        writer.write(value);
+        assertThat(ParameterWriterHelper.toSql(writer)).isEqualTo("'" + value.replaceAll("'", "''") + "'");
     }
 
     private static Query parameterOnly(int parameters) {
@@ -184,13 +203,13 @@ class ParamWriterTest {
     }
 
     private static ParamWriter stringWriter() {
-        ParamWriter writer = (ParamWriter) ParameterWriterHelper.get(parameterOnly(1));
+        ParamWriter writer = (ParamWriter) ParameterWriterHelper.get(false, parameterOnly(1));
         writer.write('0');
         return writer;
     }
 
     private static ParamWriter nullWriter() {
-        ParamWriter writer = (ParamWriter) ParameterWriterHelper.get(parameterOnly(1));
+        ParamWriter writer = (ParamWriter) ParameterWriterHelper.get(false, parameterOnly(1));
         writer.writeNull();
         return writer;
     }

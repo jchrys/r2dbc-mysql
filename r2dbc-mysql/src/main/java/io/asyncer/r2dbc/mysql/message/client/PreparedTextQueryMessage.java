@@ -87,7 +87,7 @@ public final class PreparedTextQueryMessage extends AtomicReference<MySqlParamet
             return Flux.fromArray(values);
         });
 
-        return ParamWriter.publish(query, parameters).handle((it, sink) -> {
+        return ParamWriter.publish(context.isNoBackslashEscapes(), query, parameters).handle((it, sink) -> {
             ByteBuf buf = allocator.buffer();
 
             try {

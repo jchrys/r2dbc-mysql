@@ -91,7 +91,7 @@ interface CodecTestSupport<T> {
         Query query = Query.parse("?");
 
         for (int i = 0; i < origin.length; ++i) {
-            ParameterWriter writer = ParameterWriterHelper.get(query);
+            ParameterWriter writer = ParameterWriterHelper.get(false, query);
             codec.encode(origin[i], context())
                 .publishText(writer)
                 .as(StepVerifier::create)

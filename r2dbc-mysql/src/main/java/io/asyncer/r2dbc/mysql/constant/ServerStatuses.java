@@ -50,12 +50,20 @@ public final class ServerStatuses {
     public static final short LAST_ROW_SENT = 128;
 
 //    public static final short DB_DROPPED = 256;
-//    public static final short NO_BACKSLASH_ESCAPES = 512;
+
+    /**
+     * Server does not permit backslash escapes.
+     *
+     * @since 1.1.3
+     */
+    public static final short NO_BACKSLASH_ESCAPES = 512;
+
 //    public static final short METADATA_CHANGED = 1024;
 //    public static final short QUERY_WAS_SLOW = 2048;
 //    public static final short PS_OUT_PARAMS = 4096;
 //    public static final short IN_TRANS_READONLY = 8192;
 //    public static final short SESSION_STATE_CHANGED = 16384;
 
-    private ServerStatuses() { }
+    private ServerStatuses() {
+    }
 }

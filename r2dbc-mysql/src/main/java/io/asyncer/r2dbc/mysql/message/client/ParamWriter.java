@@ -45,14 +45,17 @@ final class ParamWriter extends ParameterWriter {
 
     private final StringBuilder builder;
 
+    private final boolean noBackslashEscapes;
+
     private final Query query;
 
     private int index;
 
     private Mode mode;
 
-    private ParamWriter(Query query) {
+    private ParamWriter(boolean noBackslashEscapes, Query query) {
         this.builder = newBuilder(query);
+        this.noBackslashEscapes = noBackslashEscapes;
         this.query = query;
         this.index = 1;
         this.mode = 1 < query.getPartSize() ? Mode.AVAILABLE : Mode.FULL;
@@ -318,14 +321,18 @@ final class ParamWriter extends ParameterWriter {
     }
 
     private void escape(char c) {
+        if (c == '\'') {
+            // MySQL will auto-combine consecutive strings, whatever backslash is used or not, e.g. '1''2' -> '1\'2'
+            builder.append('\'').append('\'');
+            return;
+        } else if (noBackslashEscapes) {
+            builder.append(c);
+            return;
+        }
+
         switch (c) {
             case '\\':
                 builder.append('\\').append('\\');
-                break;
-            case '\'':
-                // MySQL will auto-combine consecutive strings, like '1''2' -> '12'.
-                // Sure, there can use '1\'2', but this will be better. (For some logging systems)
-                builder.append('\'').append('\'');
                 break;
             // Maybe useful in the future, keep '"' here.
             // case '"': buf.append('\\').append('"'); break;
@@ -335,20 +342,19 @@ final class ParamWriter extends ParameterWriter {
             // case '\u00a5': do something; break;
             // case '\u20a9': do something; break;
             case 0:
-                // MySQL is based on C/C++, must escape '\0' which is an end flag in C style string.
+                // Should escape '\0' which is an end flag in C style string.
                 builder.append('\\').append('0');
                 break;
             case '\032':
-                // It seems like a problem on Windows 32, maybe check current OS here?
+                // It gives some problems on Win32.
                 builder.append('\\').append('Z');
                 break;
             case '\n':
-                // Should escape it for some logging such as Relational Database Service (RDS) Logging
-                // System, etc. Sure, it is not necessary, but this will be better.
+                // Should be escaped for better logging.
                 builder.append('\\').append('n');
                 break;
             case '\r':
-                // Should escape it for some logging such as RDS Logging System, etc.
+                // Should be escaped for better logging.
                 builder.append('\\').append('r');
                 break;
             default:
@@ -357,9 +363,9 @@ final class ParamWriter extends ParameterWriter {
         }
     }
 
-    static Mono<String> publish(Query query, Flux<MySqlParameter> values) {
+    static Mono<String> publish(boolean noBackslashEscapes, Query query, Flux<MySqlParameter> values) {
         return Mono.defer(() -> {
-            ParamWriter writer = new ParamWriter(query);
+            ParamWriter writer = new ParamWriter(noBackslashEscapes, query);
 
             return OperatorUtils.discardOnCancel(values)
                 .doOnDiscard(MySqlParameter.class, DISPOSE)
