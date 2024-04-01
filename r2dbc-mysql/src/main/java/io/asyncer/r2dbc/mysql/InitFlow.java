@@ -126,12 +126,19 @@ final class InitFlow {
      * @param password              the password of the {@code user}.
      * @param compressionAlgorithms the list of compression algorithms.
      * @param zstdCompressionLevel  the zstd compression level.
-     * @return a {@link Flux} that indicates the initialization is done, or an error if the initialization failed.
+     * @return a {@link Mono} that indicates the initialization is done, or an error if the initialization failed.
      */
-    static Flux<Void> initHandshake(Client client, SslMode sslMode, String database, String user,
+    static Mono<Void> initHandshake(Client client, SslMode sslMode, String database, String user,
         @Nullable CharSequence password, Set<CompressionAlgorithm> compressionAlgorithms, int zstdCompressionLevel) {
-        return client.exchange(new HandshakeExchangeable(client, sslMode, database, user, password,
-            compressionAlgorithms, zstdCompressionLevel));
+        return client.exchange(new HandshakeExchangeable(
+            client,
+            sslMode,
+            database,
+            user,
+            password,
+            compressionAlgorithms,
+            zstdCompressionLevel
+        )).then();
     }
 
     /**
