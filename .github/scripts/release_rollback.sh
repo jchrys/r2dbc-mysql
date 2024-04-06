@@ -16,7 +16,7 @@
 #
 set -e
 
-TAG=$(grep scm.tag= release.properties | cut -d'=' -f2)
+TAG=$(grep scm.tag= r2dbc-mysql/release.properties | cut -d'=' -f2)
 git remote set-url origin git@github.com:asyncer-io/r2dbc-mysql.git
 git fetch
 git checkout "$1"

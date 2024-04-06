@@ -128,7 +128,7 @@ jobs:
         working-directory: ./prepare-workspace/
         run: |
             cat <(echo -e "${{ secrets.GPG_PRIVATE_KEY }}") | gpg --batch --import
-            ./mvnw -B -ntp -am -pl r2dbc-mysql clean javadoc:jar package gpg:sign org.sonatype.plugins:nexus-staging-maven-plugin:deploy -DnexusUrl=https://s01.oss.sonatype.org -DserverId=ossrh-staging -DaltStagingDirectory=/home/runner/local-staging -DskipRemoteStaging=true -DskipTests=true -Dgpg.passphrase="${{ secrets.GPG_PASSPHRASE }}" -Dgpg.keyname="${{ secrets.GPG_KEY_NAME }}"
+            ./mvnw -B -ntp -am -pl r2dbc-mysql clean javadoc:jar package gpg:sign org.sonatype.plugins:nexus-staging-maven-plugin:deploy -DnexusUrl=https://s01.oss.sonatype.org -DserverId=ossrh-staging -DaltStagingDirectory=/home/runner/local-staging -DskipRemoteStaging=true -DskipTests=true -Dcheckstyle.skip -Dgpg.passphrase="${{ secrets.GPG_PASSPHRASE }}" -Dgpg.keyname="${{ secrets.GPG_KEY_NAME }}"
 
       - name: Prepare Internal Dependencies
         run: ./mvnw -B -ntp -pl build-tools clean install -DskipTests -Dcheckstyle.skip
@@ -141,5 +141,5 @@ jobs:
       - name: Rollback Release
         working-directory: ./prepare-workspace/
         if: ${{ failure() }}
-        run: ./.github/scripts/release_rollback.sh
+        run: ./.github/scripts/release_rollback.sh trunk
 
