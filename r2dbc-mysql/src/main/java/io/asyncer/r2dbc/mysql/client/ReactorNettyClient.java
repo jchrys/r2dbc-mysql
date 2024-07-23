@@ -118,7 +118,7 @@ final class ReactorNettyClient implements Client {
                     }
                     sink.next((ServerMessage) it);
                 } else {
-                    // ReferenceCounted will released by Netty.
+                    // ReferenceCounted will be released by Netty.
                     throw ClientExceptions.unsupportedProtocol(it.getClass().getTypeName());
                 }
             })
