@@ -128,6 +128,7 @@ public final class MySqlConnectionConfiguration {
     @Nullable
     private final Publisher<String> passwordPublisher;
 
+    @Nullable
     private final AddressResolverGroup<?> resolver;
 
     private MySqlConnectionConfiguration(
