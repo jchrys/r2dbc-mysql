@@ -133,7 +133,7 @@ public interface Client {
      */
     static Mono<Client> connect(MySqlSslConfiguration ssl, SocketAddress address, boolean tcpKeepAlive,
         boolean tcpNoDelay, ConnectionContext context, @Nullable Duration connectTimeout,
-        LoopResources loopResources, @Nullable AddressResolverGroup<?> resolverGroup) {
+        LoopResources loopResources, @Nullable AddressResolverGroup<?> resolver) {
         requireNonNull(ssl, "ssl must not be null");
         requireNonNull(address, "address must not be null");
         requireNonNull(context, "context must not be null");
@@ -151,8 +151,8 @@ public interface Client {
             tcpClient = tcpClient.option(ChannelOption.TCP_NODELAY, tcpNoDelay);
         }
 
-        if (resolverGroup != null) {
-            tcpClient = tcpClient.resolver(resolverGroup);
+        if (resolver != null) {
+            tcpClient = tcpClient.resolver(resolver);
         }
 
         return tcpClient.remoteAddress(() -> address).connect()
