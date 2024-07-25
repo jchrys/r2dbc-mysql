@@ -369,14 +369,19 @@ public final class MySqlConnectionConfiguration {
 
     @Override
     public String toString() {
-        if (isHost) {
-            return "MySqlConnectionConfiguration{host='" + domain + "', port=" + port + ", ssl=" + ssl +
-                ", tcpNoDelay=" + tcpNoDelay + ", tcpKeepAlive=" + tcpKeepAlive +
-                ", connectTimeout=" + connectTimeout +
+        return "MySqlConnectionConfiguration{" +
+                (isHost ? "host='" + domain + "', port=" + port + ", ssl=" + ssl : "unixSocket='" + domain + "'") +
+                buildCommonToStringPart() +
+                '}';
+    }
+
+    private String buildCommonToStringPart() {
+        return ", connectTimeout=" + connectTimeout +
                 ", preserveInstants=" + preserveInstants +
                 ", connectionTimeZone=" + connectionTimeZone +
                 ", forceConnectionTimeZoneToSession=" + forceConnectionTimeZoneToSession +
-                ", zeroDateOption=" + zeroDateOption + ", user='" + user + "', password=" + password +
+                ", zeroDateOption=" + zeroDateOption +
+                ", user='" + user + "', password=" + password +
                 ", database='" + database + "', createDatabaseIfNotExist=" + createDatabaseIfNotExist +
                 ", preferPrepareStatement=" + preferPrepareStatement +
                 ", sessionVariables=" + sessionVariables +
@@ -384,36 +389,14 @@ public final class MySqlConnectionConfiguration {
                 ", statementTimeout=" + statementTimeout +
                 ", loadLocalInfilePath=" + loadLocalInfilePath +
                 ", localInfileBufferSize=" + localInfileBufferSize +
-                ", queryCacheSize=" + queryCacheSize + ", prepareCacheSize=" + prepareCacheSize +
+                ", queryCacheSize=" + queryCacheSize +
+                ", prepareCacheSize=" + prepareCacheSize +
                 ", compressionAlgorithms=" + compressionAlgorithms +
                 ", zstdCompressionLevel=" + zstdCompressionLevel +
                 ", loopResources=" + loopResources +
-                ", extensions=" + extensions + ", passwordPublisher=" + passwordPublisher +
-                ", resolver=" + resolver +
-                '}';
-        }
-
-        return "MySqlConnectionConfiguration{unixSocket='" + domain +
-            "', connectTimeout=" + connectTimeout +
-            ", preserveInstants=" + preserveInstants +
-            ", connectionTimeZone=" + connectionTimeZone +
-            ", forceConnectionTimeZoneToSession=" + forceConnectionTimeZoneToSession +
-            ", zeroDateOption=" + zeroDateOption + ", user='" + user + "', password=" + password +
-            ", database='" + database + "', createDatabaseIfNotExist=" + createDatabaseIfNotExist +
-            ", preferPrepareStatement=" + preferPrepareStatement +
-            ", sessionVariables=" + sessionVariables +
-            ", lockWaitTimeout=" + lockWaitTimeout +
-            ", statementTimeout=" + statementTimeout +
-            ", loadLocalInfilePath=" + loadLocalInfilePath +
-            ", localInfileBufferSize=" + localInfileBufferSize +
-            ", queryCacheSize=" + queryCacheSize +
-            ", prepareCacheSize=" + prepareCacheSize +
-            ", compressionAlgorithms=" + compressionAlgorithms +
-            ", zstdCompressionLevel=" + zstdCompressionLevel +
-            ", loopResources=" + loopResources +
-            ", extensions=" + extensions + ", passwordPublisher=" + passwordPublisher +
-            ", resolver=" + resolver +
-            '}';
+                ", extensions=" + extensions +
+                ", passwordPublisher=" + passwordPublisher +
+                ", resolver=" + resolver;
     }
 
     /**
