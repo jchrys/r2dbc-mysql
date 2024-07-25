@@ -370,7 +370,9 @@ public final class MySqlConnectionConfiguration {
     @Override
     public String toString() {
         return "MySqlConnectionConfiguration{" +
-                (isHost ? "host='" + domain + "', port=" + port + ", ssl=" + ssl : "unixSocket='" + domain + "'") +
+                (isHost ? "host='" + domain + "', port=" + port + ", ssl=" + ssl + 
+                          ", tcpNoDelay=" + tcpNoDelay + ", tcpKeepAlive=" + tcpKeepAlive : 
+                        "unixSocket='" + domain + "'") +
                 buildCommonToStringPart() +
                 '}';
     }
