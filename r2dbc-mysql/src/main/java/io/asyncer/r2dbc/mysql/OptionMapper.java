@@ -60,14 +60,13 @@ final class Source<T> {
         this.value = value;
     }
 
-    Otherwise to(Consumer<? super T> consumer) {
+    boolean to(Consumer<? super T> consumer) {
         if (value == null) {
-            return Otherwise.FALL;
+            return false;
         }
 
         consumer.accept(value);
-
-        return Otherwise.NOOP;
+        return true;
     }
 
     <R> Source<R> as(Class<R> type) {
@@ -267,28 +266,4 @@ final class Source<T> {
 
         return output;
     }
-}
-
-enum Otherwise {
-
-    NOOP {
-        @Override
-        void otherwise(Runnable runnable) {
-            // Do nothing
-        }
-    },
-
-    FALL {
-        @Override
-        void otherwise(Runnable runnable) {
-            runnable.run();
-        }
-    };
-
-    /**
-     * Invoked if the previous {@link Source} outcome did not match.
-     *
-     * @param runnable the {@link Runnable} that should be invoked.
-     */
-    abstract void otherwise(Runnable runnable);
 }

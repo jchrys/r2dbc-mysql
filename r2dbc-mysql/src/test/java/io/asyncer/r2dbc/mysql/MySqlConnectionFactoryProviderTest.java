@@ -17,8 +17,10 @@
 package io.asyncer.r2dbc.mysql;
 
 import io.asyncer.r2dbc.mysql.constant.CompressionAlgorithm;
+import io.asyncer.r2dbc.mysql.constant.HaProtocol;
 import io.asyncer.r2dbc.mysql.constant.SslMode;
 import io.asyncer.r2dbc.mysql.constant.ZeroDateOption;
+import io.asyncer.r2dbc.mysql.internal.NodeAddress;
 import io.netty.handler.ssl.SslContextBuilder;
 import io.r2dbc.spi.ConnectionFactories;
 import io.r2dbc.spi.ConnectionFactoryOptions;
@@ -31,6 +33,7 @@ import org.junit.jupiter.params.provider.MethodSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.reactivestreams.Publisher;
 import reactor.core.publisher.Mono;
+import reactor.test.StepVerifier;
 
 import javax.net.ssl.HostnameVerifier;
 import javax.net.ssl.SSLSession;
@@ -39,7 +42,6 @@ import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.net.URLEncoder;
 import java.time.Duration;
-import java.time.ZoneId;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
@@ -57,6 +59,7 @@ import static io.r2dbc.spi.ConnectionFactoryOptions.DRIVER;
 import static io.r2dbc.spi.ConnectionFactoryOptions.HOST;
 import static io.r2dbc.spi.ConnectionFactoryOptions.PASSWORD;
 import static io.r2dbc.spi.ConnectionFactoryOptions.PORT;
+import static io.r2dbc.spi.ConnectionFactoryOptions.PROTOCOL;
 import static io.r2dbc.spi.ConnectionFactoryOptions.SSL;
 import static io.r2dbc.spi.ConnectionFactoryOptions.USER;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -92,6 +95,25 @@ class MySqlConnectionFactoryProviderTest {
             String.format("sslKey=%s&", URLEncoder.encode("/path/to/client-key.pem", "UTF-8")) +
             String.format("sslCert=%s&", URLEncoder.encode("/path/to/client-cert.pem", "UTF-8")) +
             "sslKeyPassword=ssl123456")).isExactlyInstanceOf(MySqlConnectionFactory.class);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+        "r2dbc:mysql://localhost:3306",
+        "r2dbcs:mysql://root@localhost:3306",
+        "r2dbc:mysql://root@localhost:3306?unixSocket=/path/to/mysql.sock",
+        "r2dbcs:mysql://mysql-region-1.some-cloud.com,mysql-region-2.some-cloud.com:3307",
+        "r2dbc:mysql:loadbalance://mysql-region-1.some-cloud.com,mysql-region-2.some-cloud.com:3307",
+        "r2dbc:mysql:sequential://mysql-region-1.some-cloud.com:3306,mysql-region-2.some-cloud.com:3307",
+        "r2dbcs:mysql:replication://mysql-region-1.some-cloud.com:3305,mysql-region-2.some-cloud.com:3307",
+        "r2dbc:mysql+srv:loadbalance://mysql-region-1.some-cloud.com,mysql-region-2.some-cloud.com:3307",
+        "r2dbc:mysql+srv:sequential://mysql-region-1.some-cloud.com:3306,mysql-region-2.some-cloud.com:3307",
+        "r2dbcs:mysql+srv:replication://mysql-region-1.some-cloud.com:3305,mysql-region-2.some-cloud.com:3307",
+    })
+    void supports(String url) {
+        MySqlConnectionFactoryProvider provider = new MySqlConnectionFactoryProvider();
+
+        assertThat(provider.supports(ConnectionFactoryOptions.parse(url))).isTrue();
     }
 
     @Test
@@ -135,6 +157,7 @@ class MySqlConnectionFactoryProviderTest {
 
         options = ConnectionFactoryOptions.builder()
             .option(DRIVER, "mysql")
+            .option(PROTOCOL, "replication")
             .option(HOST, "127.0.0.1")
             .option(PORT, 3307)
             .option(USER, "root")
@@ -161,16 +184,25 @@ class MySqlConnectionFactoryProviderTest {
 
         MySqlConnectionConfiguration configuration = MySqlConnectionFactoryProvider.setup(options);
 
-        assertThat(configuration.getDomain()).isEqualTo("127.0.0.1");
-        assertThat(configuration.isHost()).isTrue();
-        assertThat(configuration.getPort()).isEqualTo(3307);
-        assertThat(configuration.getUser()).isEqualTo("root");
-        assertThat(configuration.getPassword()).isEqualTo("123456");
-        assertThat(configuration.getConnectTimeout()).isEqualTo(Duration.ofSeconds(3));
+        assertThat(configuration.getSocket()).isInstanceOf(TcpSocketConfiguration.class);
+
+        TcpSocketConfiguration tcp = (TcpSocketConfiguration) configuration.getSocket();
+
+        assertThat(tcp.getProtocol())
+            .isEqualTo(HaProtocol.REPLICATION);
+        assertThat(tcp.getAddresses())
+            .isEqualTo(Collections.singletonList(new NodeAddress("127.0.0.1", 3307)));
+        assertThat(tcp.isTcpKeepAlive()).isTrue();
+        assertThat(tcp.isTcpNoDelay()).isTrue();
+
+        configuration.getCredential()
+            .as(StepVerifier::create)
+            .expectNext(new Credential("root", "123456"))
+            .verifyComplete();
+
+        assertThat(configuration.getClient().getConnectTimeout()).isEqualTo(Duration.ofSeconds(3));
         assertThat(configuration.getDatabase()).isEqualTo("r2dbc");
         assertThat(configuration.getZeroDateOption()).isEqualTo(ZeroDateOption.USE_ROUND);
-        assertThat(configuration.isTcpKeepAlive()).isTrue();
-        assertThat(configuration.isTcpNoDelay()).isTrue();
         assertThat(configuration.getConnectionTimeZone()).isEqualTo("Asia/Tokyo");
         assertThat(configuration.getPreferPrepareStatement()).isExactlyInstanceOf(AllTruePredicate.class);
         assertThat(configuration.getExtensions()).isEqualTo(Extensions.from(Collections.emptyList(), true));
@@ -248,9 +280,7 @@ class MySqlConnectionFactoryProviderTest {
 
     @Test
     void validProgrammaticUnixSocket() {
-        Assert<?, String> domain = assertThat("/path/to/mysql.sock");
-        Assert<?, Boolean> isHost = assertThat(false);
-        Assert<?, SslMode> sslMode = assertThat(SslMode.DISABLED);
+        Assert<?, String> path = assertThat("/path/to/mysql.sock");
 
         ConnectionFactoryOptions options = ConnectionFactoryOptions.builder()
             .option(DRIVER, "mysql")
@@ -260,9 +290,11 @@ class MySqlConnectionFactoryProviderTest {
             .build();
         MySqlConnectionConfiguration configuration = MySqlConnectionFactoryProvider.setup(options);
 
-        domain.isEqualTo(configuration.getDomain());
-        isHost.isEqualTo(configuration.isHost());
-        sslMode.isEqualTo(configuration.getSsl().getSslMode());
+        assertThat(configuration.getSocket()).isInstanceOf(UnixDomainSocketConfiguration.class);
+
+        UnixDomainSocketConfiguration unix = (UnixDomainSocketConfiguration) configuration.getSocket();
+
+        path.isEqualTo(unix.getPath());
 
         for (SslMode mode : SslMode.values()) {
             configuration = MySqlConnectionFactoryProvider.setup(ConnectionFactoryOptions.builder()
@@ -272,9 +304,11 @@ class MySqlConnectionFactoryProviderTest {
                 .option(Option.valueOf("sslMode"), mode.name().toLowerCase())
                 .build());
 
-            domain.isEqualTo(configuration.getDomain());
-            isHost.isEqualTo(configuration.isHost());
-            sslMode.isEqualTo(configuration.getSsl().getSslMode());
+            assertThat(configuration.getSocket()).isInstanceOf(UnixDomainSocketConfiguration.class);
+
+            unix = (UnixDomainSocketConfiguration) configuration.getSocket();
+
+            path.isEqualTo(unix.getPath());
         }
 
         configuration = MySqlConnectionFactoryProvider.setup(ConnectionFactoryOptions.builder()
@@ -303,31 +337,24 @@ class MySqlConnectionFactoryProviderTest {
             .option(Option.valueOf("tcpNoDelay"), "true")
             .build());
 
-        assertThat(configuration.getDomain()).isEqualTo("/path/to/mysql.sock");
-        assertThat(configuration.isHost()).isFalse();
-        assertThat(configuration.getPort()).isEqualTo(3306);
-        assertThat(configuration.getUser()).isEqualTo("root");
-        assertThat(configuration.getPassword()).isEqualTo("123456");
-        assertThat(configuration.getConnectTimeout()).isEqualTo(Duration.ofSeconds(3));
+        assertThat(configuration.getSocket()).isInstanceOf(UnixDomainSocketConfiguration.class);
+
+        unix = (UnixDomainSocketConfiguration) configuration.getSocket();
+
+        assertThat(unix.getPath()).isEqualTo("/path/to/mysql.sock");
+
+        configuration.getCredential()
+            .as(StepVerifier::create)
+            .expectNext(new Credential("root", "123456"))
+            .verifyComplete();
+
+        assertThat(configuration.getClient().getConnectTimeout()).isEqualTo(Duration.ofSeconds(3));
         assertThat(configuration.getDatabase()).isEqualTo("r2dbc");
         assertThat(configuration.isCreateDatabaseIfNotExist()).isTrue();
         assertThat(configuration.getZeroDateOption()).isEqualTo(ZeroDateOption.USE_ROUND);
-        assertThat(configuration.isTcpKeepAlive()).isTrue();
-        assertThat(configuration.isTcpNoDelay()).isTrue();
         assertThat(configuration.getConnectionTimeZone()).isEqualTo("Asia/Tokyo");
         assertThat(configuration.getPreferPrepareStatement()).isExactlyInstanceOf(AllTruePredicate.class);
         assertThat(configuration.getExtensions()).isEqualTo(Extensions.from(Collections.emptyList(), true));
-
-        assertThat(configuration.getSsl().getSslMode()).isEqualTo(SslMode.DISABLED);
-        assertThat(configuration.getSsl().getTlsVersion()).isEmpty();
-        assertThat(configuration.getSsl().getSslCa()).isNull();
-        assertThat(configuration.getSsl().getSslKey()).isNull();
-        assertThat(configuration.getSsl().getSslCert()).isNull();
-        assertThat(configuration.getSsl().getSslKeyPassword()).isNull();
-        assertThat(configuration.getSsl().getSslHostnameVerifier()).isNull();
-        SslContextBuilder sslContextBuilder = SslContextBuilder.forClient();
-        assertThat(sslContextBuilder)
-            .isSameAs(configuration.getSsl().customizeSslContext(sslContextBuilder));
     }
 
     @Test
@@ -458,11 +485,10 @@ class MySqlConnectionFactoryProviderTest {
         List<String> exceptConfigs = Arrays.asList(
             "extendWith",
             "username",
+            "addHost",
             "zeroDateOption");
         List<String> exceptOptions = Arrays.asList(
-            "driver",
             "ssl",
-            "protocol",
             "zeroDate");
         Set<String> allOptions = Stream.concat(
                 Arrays.stream(ConnectionFactoryOptions.class.getFields()),

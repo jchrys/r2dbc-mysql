@@ -92,12 +92,15 @@ class OptionMapperTest {
         AtomicReference<Object> ref = new AtomicReference<>(fill);
         AtomicReference<Object> other = new AtomicReference<>(fill);
 
-        new OptionMapper(ConnectionFactoryOptions.builder()
+        boolean set = new OptionMapper(ConnectionFactoryOptions.builder()
             .option(USER, "no-root")
             .build())
             .requires(USER)
-            .to(ref::set)
-            .otherwise(() -> other.set(8));
+            .to(ref::set);
+
+        if (!set) {
+            other.set(8);
+        }
 
         assertThat(ref.get()).isEqualTo("no-root");
         assertThat(other.get()).isSameAs(fill);
@@ -109,11 +112,14 @@ class OptionMapperTest {
         AtomicReference<Object> ref = new AtomicReference<>(fill);
         AtomicReference<Object> other = new AtomicReference<>(fill);
 
-        new OptionMapper(ConnectionFactoryOptions.builder()
+        boolean set = new OptionMapper(ConnectionFactoryOptions.builder()
             .build())
             .optional(USER)
-            .to(ref::set)
-            .otherwise(() -> other.set(8));
+            .to(ref::set);
+
+        if (!set) {
+            other.set(8);
+        }
 
         assertThat(ref.get()).isSameAs(fill);
         assertThat(other.get()).isEqualTo(8);

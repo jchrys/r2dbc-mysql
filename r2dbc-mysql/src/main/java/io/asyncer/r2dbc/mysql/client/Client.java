@@ -17,26 +17,16 @@
 package io.asyncer.r2dbc.mysql.client;
 
 import io.asyncer.r2dbc.mysql.ConnectionContext;
-import io.asyncer.r2dbc.mysql.MySqlSslConfiguration;
 import io.asyncer.r2dbc.mysql.message.client.ClientMessage;
 import io.asyncer.r2dbc.mysql.message.server.ServerMessage;
 import io.netty.buffer.ByteBufAllocator;
-import io.netty.channel.ChannelOption;
 import io.netty.util.internal.logging.InternalLogger;
 import io.netty.util.internal.logging.InternalLoggerFactory;
-import org.jetbrains.annotations.Nullable;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import reactor.core.publisher.SynchronousSink;
-import reactor.netty.resources.LoopResources;
-import reactor.netty.tcp.TcpClient;
 
-import java.net.InetSocketAddress;
-import java.net.SocketAddress;
-import java.time.Duration;
 import java.util.function.BiConsumer;
-
-import static io.asyncer.r2dbc.mysql.internal.util.AssertUtils.requireNonNull;
 
 /**
  * An abstraction that wraps the networking part of exchanging methods.
@@ -105,52 +95,4 @@ public interface Client {
      * @return if connection is valid
      */
     boolean isConnected();
-
-    /**
-     * Sends a signal to the connection, which means server does not support SSL.
-     */
-    void sslUnsupported();
-
-    /**
-     * Sends a signal to {@link Client this}, which means login has succeeded.
-     */
-    void loginSuccess();
-
-    /**
-     * Connects to {@code address} with configurations.  Normally, should log-in after connected.
-     *
-     * @param ssl            the SSL configuration
-     * @param address        socket address, may be host address, or Unix Domain Socket address
-     * @param tcpKeepAlive   if enable the {@link ChannelOption#SO_KEEPALIVE}
-     * @param tcpNoDelay     if enable the {@link ChannelOption#TCP_NODELAY}
-     * @param context        the connection context
-     * @param connectTimeout connect timeout, or {@code null} if it has no timeout
-     * @param loopResources  the loop resources to use
-     * @return A {@link Mono} that will emit a connected {@link Client}.
-     * @throws IllegalArgumentException if {@code ssl}, {@code address} or {@code context} is {@code null}.
-     * @throws ArithmeticException      if {@code connectTimeout} milliseconds overflow as an int
-     */
-    static Mono<Client> connect(MySqlSslConfiguration ssl, SocketAddress address, boolean tcpKeepAlive,
-        boolean tcpNoDelay, ConnectionContext context, @Nullable Duration connectTimeout,
-        LoopResources loopResources) {
-        requireNonNull(ssl, "ssl must not be null");
-        requireNonNull(address, "address must not be null");
-        requireNonNull(context, "context must not be null");
-
-        TcpClient tcpClient = TcpClient.newConnection()
-            .runOn(loopResources);
-
-        if (connectTimeout != null) {
-            tcpClient = tcpClient.option(ChannelOption.CONNECT_TIMEOUT_MILLIS,
-                Math.toIntExact(connectTimeout.toMillis()));
-        }
-
-        if (address instanceof InetSocketAddress) {
-            tcpClient = tcpClient.option(ChannelOption.SO_KEEPALIVE, tcpKeepAlive);
-            tcpClient = tcpClient.option(ChannelOption.TCP_NODELAY, tcpNoDelay);
-        }
-
-        return tcpClient.remoteAddress(() -> address).connect()
-            .map(conn -> new ReactorNettyClient(conn, ssl, context));
-    }
 }

@@ -4,6 +4,7 @@ import com.zaxxer.hikari.HikariDataSource;
 import io.asyncer.r2dbc.mysql.api.MySqlResult;
 import io.asyncer.r2dbc.mysql.internal.util.TestContainerExtension;
 import io.asyncer.r2dbc.mysql.internal.util.TestServerUtil;
+import io.asyncer.r2dbc.mysql.internal.NodeAddress;
 import org.assertj.core.data.TemporalUnitOffset;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.AfterEach;
@@ -306,22 +307,26 @@ class TimeZoneIntegrationTest {
         return customizer.apply(builder).build();
     }
 
-    private static JdbcTemplate jdbc(MySqlConnectionConfiguration config) {
+    private static JdbcTemplate jdbc(MySqlConnectionConfiguration configuration) {
+        TcpSocketConfiguration socket = (TcpSocketConfiguration) configuration.getSocket();
+        NodeAddress address = socket.getFirstAddress();
+        Credential credential = configuration.getCredential().blockOptional().orElseThrow(() ->
+            new IllegalStateException("Credential must be present"));
         HikariDataSource source = new HikariDataSource();
 
-        source.setJdbcUrl(String.format("jdbc:mysql://%s:%d/%s", config.getDomain(),
-            config.getPort(), config.getDatabase()));
-        source.setUsername(config.getUser());
-        source.setPassword(Optional.ofNullable(config.getPassword())
+        source.setJdbcUrl(String.format("jdbc:mysql://%s:%d/%s",
+            address.getHost(), address.getPort(), configuration.getDatabase()));
+        source.setUsername(credential.getUser());
+        source.setPassword(Optional.ofNullable(credential.getPassword())
             .map(Object::toString).orElse(null));
         source.setMaximumPoolSize(1);
-        source.setConnectionTimeout(Optional.ofNullable(config.getConnectTimeout())
+        source.setConnectionTimeout(Optional.ofNullable(configuration.getClient().getConnectTimeout())
             .map(Duration::toMillis).orElse(0L));
 
-        source.addDataSourceProperty("preserveInstants", config.isPreserveInstants());
-        source.addDataSourceProperty("connectionTimeZone", config.getConnectionTimeZone());
+        source.addDataSourceProperty("preserveInstants", configuration.isPreserveInstants());
+        source.addDataSourceProperty("connectionTimeZone", configuration.getConnectionTimeZone());
         source.addDataSourceProperty("forceConnectionTimeZoneToSession",
-            config.isForceConnectionTimeZoneToSession());
+            configuration.isForceConnectionTimeZoneToSession());
 
         return new JdbcTemplate(source);
     }

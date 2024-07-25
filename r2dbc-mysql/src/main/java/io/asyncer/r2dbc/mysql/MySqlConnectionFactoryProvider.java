@@ -17,8 +17,12 @@
 package io.asyncer.r2dbc.mysql;
 
 import io.asyncer.r2dbc.mysql.constant.CompressionAlgorithm;
+import io.asyncer.r2dbc.mysql.constant.ProtocolDriver;
+import io.asyncer.r2dbc.mysql.constant.HaProtocol;
 import io.asyncer.r2dbc.mysql.constant.SslMode;
 import io.asyncer.r2dbc.mysql.constant.ZeroDateOption;
+import io.asyncer.r2dbc.mysql.internal.NodeAddress;
+import io.asyncer.r2dbc.mysql.internal.util.AddressUtils;
 import io.netty.handler.ssl.SslContextBuilder;
 import io.r2dbc.spi.ConnectionFactory;
 import io.r2dbc.spi.ConnectionFactoryOptions;
@@ -45,6 +49,7 @@ import static io.r2dbc.spi.ConnectionFactoryOptions.HOST;
 import static io.r2dbc.spi.ConnectionFactoryOptions.LOCK_WAIT_TIMEOUT;
 import static io.r2dbc.spi.ConnectionFactoryOptions.PASSWORD;
 import static io.r2dbc.spi.ConnectionFactoryOptions.PORT;
+import static io.r2dbc.spi.ConnectionFactoryOptions.PROTOCOL;
 import static io.r2dbc.spi.ConnectionFactoryOptions.SSL;
 import static io.r2dbc.spi.ConnectionFactoryOptions.STATEMENT_TIMEOUT;
 import static io.r2dbc.spi.ConnectionFactoryOptions.USER;
@@ -55,11 +60,6 @@ import static io.r2dbc.spi.ConnectionFactoryOptions.USER;
 public final class MySqlConnectionFactoryProvider implements ConnectionFactoryProvider {
 
     /**
-     * The name of the driver used for discovery, should not be changed.
-     */
-    public static final String MYSQL_DRIVER = "mysql";
-
-    /**
      * Option to set the Unix Domain Socket.
      *
      * @since 0.8.1
@@ -67,8 +67,20 @@ public final class MySqlConnectionFactoryProvider implements ConnectionFactoryPr
     public static final Option<String> UNIX_SOCKET = Option.valueOf("unixSocket");
 
     /**
-     * Option to set the time zone conversion.  Default to {@code true} means enable conversion between JVM
-     * and {@link #CONNECTION_TIME_ZONE}.
+     * Option to whether to perform failover reconnection.  Default to {@code false}.
+     * <p>
+     * It is not recommended due to it may lead to unexpected results. For example, it may recover a transaction state
+     * from a failed server node to an available node, the user can not aware of it, and continuing to execute more
+     * queries in the transaction will lead to unexpected inconsistencies or errors. Or, user set a self-defined
+     * variable in the session, it may not be recovered to the new node due to the driver can not aware of it.
+     *
+     * @since 1.2.0
+     */
+    public static final Option<Boolean> AUTO_RECONNECT = Option.valueOf("autoReconnect");
+
+    /**
+     * Option to set the time zone conversion.  Default to {@code true} means enable conversion between JVM and
+     * {@link #CONNECTION_TIME_ZONE}.
      * <p>
      * Note: disable it will ignore the time zone of connection, and use the JVM local time zone.
      *
@@ -77,9 +89,9 @@ public final class MySqlConnectionFactoryProvider implements ConnectionFactoryPr
     public static final Option<Boolean> PRESERVE_INSTANTS = Option.valueOf("preserveInstants");
 
     /**
-     * Option to set the time zone of connection.  Default to {@code LOCAL} means use JVM local time zone.
-     * It should be {@code "LOCAL"}, {@code "SERVER"}, or a valid ID of {@code ZoneId}. {@code "SERVER"} means
-     * querying the server-side timezone during initialization.
+     * Option to set the time zone of connection.  Default to {@code LOCAL} means use JVM local time zone. It should be
+     * {@code "LOCAL"}, {@code "SERVER"}, or a valid ID of {@code ZoneId}. {@code "SERVER"} means querying the
+     * server-side timezone during initialization.
      *
      * @since 1.1.2
      */
@@ -88,8 +100,8 @@ public final class MySqlConnectionFactoryProvider implements ConnectionFactoryPr
     /**
      * Option to force the time zone of connection to session time zone.  Default to {@code false}.
      * <p>
-     * Note: alter the time zone of session will affect the results of MySQL date/time functions, e.g.
-     * {@code NOW([n])}, {@code CURRENT_TIME([n])}, {@code CURRENT_DATE()}, etc. Please use with caution.
+     * Note: alter the time zone of session will affect the results of MySQL date/time functions, e.g. {@code NOW([n])},
+     * {@code CURRENT_TIME([n])}, {@code CURRENT_DATE()}, etc. Please use with caution.
      *
      * @since 1.1.2
      */
@@ -97,8 +109,7 @@ public final class MySqlConnectionFactoryProvider implements ConnectionFactoryPr
         Option.valueOf("forceConnectionTimeZoneToSession");
 
     /**
-     * Option to set {@link ZoneId} of server. If it is set, driver will ignore the real time zone of
-     * server-side.
+     * Option to set {@link ZoneId} of server. If it is set, driver will ignore the real time zone of server-side.
      *
      * @since 0.8.2
      * @deprecated since 1.1.2, use {@link #CONNECTION_TIME_ZONE} instead.
@@ -122,8 +133,8 @@ public final class MySqlConnectionFactoryProvider implements ConnectionFactoryPr
 
     /**
      * Option to configure {@link HostnameVerifier}. It is available only if the {@link #SSL_MODE} set to
-     * {@link SslMode#VERIFY_IDENTITY}. It can be an implementation class name of {@link HostnameVerifier}
-     * with a public no-args constructor.
+     * {@link SslMode#VERIFY_IDENTITY}. It can be an implementation class name of {@link HostnameVerifier} with a public
+     * no-args constructor.
      *
      * @since 0.8.2
      */
@@ -131,17 +142,17 @@ public final class MySqlConnectionFactoryProvider implements ConnectionFactoryPr
         Option.valueOf("sslHostnameVerifier");
 
     /**
-     * Option to TLS versions for SslContext protocols, see also {@code TlsVersions}. Usually sorted from
-     * higher to lower. It can be a {@code Collection<String>}. It can be a {@link String}, protocols will be
-     * split by {@code ,}. e.g. "TLSv1.2,TLSv1.1,TLSv1".
+     * Option to TLS versions for SslContext protocols, see also {@code TlsVersions}. Usually sorted from higher to
+     * lower. It can be a {@code Collection<String>}. It can be a {@link String}, protocols will be split by {@code ,}.
+     * e.g. "TLSv1.2,TLSv1.1,TLSv1".
      *
      * @since 0.8.1
      */
     public static final Option<String[]> TLS_VERSION = Option.valueOf("tlsVersion");
 
     /**
-     * Option to set a PEM file of server SSL CA. It will be used to verify server certificates. And it will
-     * be used only if {@link #SSL_MODE} set to {@link SslMode#VERIFY_CA} or higher level.
+     * Option to set a PEM file of server SSL CA. It will be used to verify server certificates. And it will be used
+     * only if {@link #SSL_MODE} set to {@link SslMode#VERIFY_CA} or higher level.
      *
      * @since 0.8.1
      */
@@ -170,8 +181,8 @@ public final class MySqlConnectionFactoryProvider implements ConnectionFactoryPr
     public static final Option<String> SSL_CERT = Option.valueOf("sslCert");
 
     /**
-     * Option to custom {@link SslContextBuilder}. It can be an implementation class name of {@link Function}
-     * with a public no-args constructor.
+     * Option to custom {@link SslContextBuilder}. It can be an implementation class name of {@link Function} with a
+     * public no-args constructor.
      *
      * @since 0.8.2
      */
@@ -203,18 +214,17 @@ public final class MySqlConnectionFactoryProvider implements ConnectionFactoryPr
     /**
      * Enable server preparing for parameterized statements and prefer server preparing simple statements.
      * <p>
-     * The value can be a {@link Boolean}. If it is {@code true}, driver will use server preparing for
-     * parameterized statements and text query for simple statements. If it is {@code false}, driver will use
-     * client preparing for parameterized statements and text query for simple statements.
+     * The value can be a {@link Boolean}. If it is {@code true}, driver will use server preparing for parameterized
+     * statements and text query for simple statements. If it is {@code false}, driver will use client preparing for
+     * parameterized statements and text query for simple statements.
      * <p>
-     * The value can be a {@link Predicate}{@code <}{@link String}{@code >}. If it is set, driver will server
-     * preparing for parameterized statements, it configures whether to prefer prepare execution on a
-     * statement-by-statement basis (simple statements). The {@link Predicate}{@code <}{@link String}{@code >}
-     * accepts the simple SQL query string and returns a {@code boolean} flag indicating preference.
+     * The value can be a {@link Predicate}{@code <}{@link String}{@code >}. If it is set, driver will server preparing
+     * for parameterized statements, it configures whether to prefer prepare execution on a statement-by-statement basis
+     * (simple statements). The {@link Predicate}{@code <}{@link String}{@code >} accepts the simple SQL query string
+     * and returns a {@code boolean} flag indicating preference.
      * <p>
-     * The value can be a {@link String}. If it is set, driver will try to convert it to {@link Boolean} or an
-     * instance of {@link Predicate}{@code <}{@link String}{@code >} which use reflection with a public
-     * no-args constructor.
+     * The value can be a {@link String}. If it is set, driver will try to convert it to {@link Boolean} or an instance
+     * of {@link Predicate}{@code <}{@link String}{@code >} which use reflection with a public no-args constructor.
      *
      * @since 0.8.1
      */
@@ -248,9 +258,9 @@ public final class MySqlConnectionFactoryProvider implements ConnectionFactoryPr
     /**
      * Option to set compression algorithms.  Default to [{@link CompressionAlgorithm#UNCOMPRESSED}].
      * <p>
-     * It will auto choose an algorithm that's contained in the list and supported by the server, preferring
-     * zstd, then zlib. If the list does not contain {@link CompressionAlgorithm#UNCOMPRESSED} and the server
-     * does not support any algorithm in the list, an exception will be thrown when connecting.
+     * It will auto choose an algorithm that's contained in the list and supported by the server, preferring zstd, then
+     * zlib. If the list does not contain {@link CompressionAlgorithm#UNCOMPRESSED} and the server does not support any
+     * algorithm in the list, an exception will be thrown when connecting.
      * <p>
      * Note: zstd requires a dependency {@code com.github.luben:zstd-jni}.
      *
@@ -264,8 +274,7 @@ public final class MySqlConnectionFactoryProvider implements ConnectionFactoryPr
      * <p>
      * It is only used if zstd is chosen for the connection.
      * <p>
-     * Note: MySQL protocol does not allow to set the zlib compression level of the server, only zstd is
-     * configurable.
+     * Note: MySQL protocol does not allow to set the zlib compression level of the server, only zstd is configurable.
      *
      * @since 1.1.2
      */
@@ -302,9 +311,9 @@ public final class MySqlConnectionFactoryProvider implements ConnectionFactoryPr
     public static final Option<Boolean> AUTODETECT_EXTENSIONS = Option.valueOf("autodetectExtensions");
 
     /**
-     * Password Publisher function can be used to retrieve password before creating a connection. This can be
-     * used with Amazon RDS Aurora IAM authentication, wherein it requires token to be generated. The token is
-     * valid for 15 minutes, and this token will be used as password.
+     * Password Publisher function can be used to retrieve password before creating a connection. This can be used with
+     * Amazon RDS Aurora IAM authentication, wherein it requires token to be generated. The token is valid for 15
+     * minutes, and this token will be used as password.
      */
     public static final Option<Publisher<String>> PASSWORD_PUBLISHER = Option.valueOf("passwordPublisher");
 
@@ -318,12 +327,14 @@ public final class MySqlConnectionFactoryProvider implements ConnectionFactoryPr
     @Override
     public boolean supports(ConnectionFactoryOptions options) {
         requireNonNull(options, "connectionFactoryOptions must not be null");
-        return MYSQL_DRIVER.equals(options.getValue(DRIVER));
+
+        Object driver = options.getValue(DRIVER);
+        return driver instanceof String && ProtocolDriver.supports((String) driver);
     }
 
     @Override
     public String getDriver() {
-        return MYSQL_DRIVER;
+        return ProtocolDriver.standardDriver();
     }
 
     /**
@@ -340,18 +351,30 @@ public final class MySqlConnectionFactoryProvider implements ConnectionFactoryPr
             .to(builder::user);
         mapper.optional(PASSWORD).asPassword()
             .to(builder::password);
-        mapper.optional(UNIX_SOCKET).asString()
-            .to(builder::unixSocket)
-            .otherwise(() -> setupHost(builder, mapper));
+
+        boolean unixSocket = mapper.optional(UNIX_SOCKET).asString()
+            .to(builder::unixSocket);
+
+        if (!unixSocket) {
+            setupHost(builder, mapper);
+        }
+
         mapper.optional(PRESERVE_INSTANTS).asBoolean()
             .to(builder::preserveInstants);
-        mapper.optional(CONNECTION_TIME_ZONE).asString()
-            .to(builder::connectionTimeZone)
-            .otherwise(() -> mapper.optional(SERVER_ZONE_ID)
+
+        boolean connectionTimeZone = mapper.optional(CONNECTION_TIME_ZONE).asString()
+            .to(builder::connectionTimeZone);
+
+        if (!connectionTimeZone) {
+            mapper.optional(SERVER_ZONE_ID)
                 .as(ZoneId.class, id -> ZoneId.of(id, ZoneId.SHORT_IDS))
-                .to(builder::serverZoneId));
+                .to(builder::serverZoneId);
+        }
+
         mapper.optional(FORCE_CONNECTION_TIME_ZONE_TO_SESSION).asBoolean()
             .to(builder::forceConnectionTimeZoneToSession);
+        mapper.optional(AUTO_RECONNECT).asBoolean()
+            .to(builder::autoReconnect);
         mapper.optional(TCP_KEEP_ALIVE).asBoolean()
             .to(builder::tcpKeepAlive);
         mapper.optional(TCP_NO_DELAY).asBoolean()
@@ -388,7 +411,7 @@ public final class MySqlConnectionFactoryProvider implements ConnectionFactoryPr
         mapper.optional(LOOP_RESOURCES).as(LoopResources.class)
             .to(builder::loopResources);
         mapper.optional(PASSWORD_PUBLISHER).as(Publisher.class)
-            .to(builder::passwordPublisher);
+            .to(builder::password);
         mapper.optional(SESSION_VARIABLES).asArray(
             String[].class,
             Function.identity(),
@@ -404,17 +427,44 @@ public final class MySqlConnectionFactoryProvider implements ConnectionFactoryPr
     }
 
     /**
-     * Set builder of {@link MySqlConnectionConfiguration} for hostname-based address with SSL
-     * configurations.
+     * Set builder of {@link MySqlConnectionConfiguration} for hostname-based path with SSL configurations.
      *
      * @param builder the builder of {@link MySqlConnectionConfiguration}.
      * @param mapper  the {@link OptionMapper} of {@code options}.
      */
     private static void setupHost(MySqlConnectionConfiguration.Builder builder, OptionMapper mapper) {
-        mapper.requires(HOST).asString()
-            .to(builder::host);
-        mapper.optional(PORT).asInt()
+        boolean port = mapper.optional(PORT).asInt()
             .to(builder::port);
+
+        if (port) {
+            // If port is set, host must be a single host.
+            mapper.requires(HOST).asString()
+                .to(builder::host);
+        } else {
+            // If port is not set, host can be a single host or multiple hosts.
+            // If the URI contains an underscore in the host, it will produce an incorrectly resolved host and port.
+            // e.g. "r2dbc:mysql://my_db:3306" will be resolved to "my_db:3306" as host and null as port.
+            // See https://github.com/asyncer-io/r2dbc-mysql/issues/255
+            mapper.requires(HOST)
+                .asArray(String[].class, Function.identity(), it -> it.split(","), String[]::new)
+                .to(hosts -> {
+                    if (hosts.length == 1) {
+                        builder.host(hosts[0]);
+                        return;
+                    }
+
+                    for (String host : hosts) {
+                        NodeAddress address = AddressUtils.parseAddress(host);
+
+                        builder.addHost(address.getHost(), address.getPort());
+                    }
+                });
+        }
+
+        mapper.requires(DRIVER).as(ProtocolDriver.class, ProtocolDriver::from)
+            .to(builder::driver);
+        mapper.optional(PROTOCOL).as(HaProtocol.class, HaProtocol::from)
+            .to(builder::protocol);
         mapper.optional(SSL).asBoolean()
             .to(isSsl -> builder.sslMode(isSsl ? SslMode.REQUIRED : SslMode.DISABLED));
         mapper.optional(SSL_MODE).as(SslMode.class, id -> SslMode.valueOf(id.toUpperCase()))
@@ -437,12 +487,12 @@ public final class MySqlConnectionFactoryProvider implements ConnectionFactoryPr
     }
 
     /**
-     * Splits session variables from user input. e.g. {@code sql_mode='ANSI_QUOTE,STRICT',c=d;e=f} will be
-     * split into {@code ["sql_mode='ANSI_QUOTE,STRICT'", "c=d", "e=f"]}.
+     * Splits session variables from user input. e.g. {@code sql_mode='ANSI_QUOTE,STRICT',c=d;e=f} will be split into
+     * {@code ["sql_mode='ANSI_QUOTE,STRICT'", "c=d", "e=f"]}.
      * <p>
-     * It supports escaping characters with backslash, quoted values with single or double quotes, and nested
-     * brackets. Priorities are: backslash in quoted &gt; single quote = double quote &gt; bracket, backslash
-     * will not be a valid escape character if it is not in a quoted value.
+     * It supports escaping characters with backslash, quoted values with single or double quotes, and nested brackets.
+     * Priorities are: backslash in quoted &gt; single quote = double quote &gt; bracket, backslash will not be a valid
+     * escape character if it is not in a quoted value.
      * <p>
      * Note that it does not strictly check syntax validity, so it will not throw syntax exceptions.
      *
