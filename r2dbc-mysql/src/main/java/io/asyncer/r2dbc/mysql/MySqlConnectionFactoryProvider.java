@@ -401,7 +401,8 @@ public final class MySqlConnectionFactoryProvider implements ConnectionFactoryPr
             .to(builder::loopResources);
         mapper.optional(PASSWORD_PUBLISHER).as(Publisher.class)
             .to(builder::passwordPublisher);
-        mapper.optional(RESOLVER).as(AddressResolverGroup.class);
+        mapper.optional(RESOLVER).as(AddressResolverGroup.class)
+            .to(builder::resolver);
         mapper.optional(SESSION_VARIABLES).asArray(
             String[].class,
             Function.identity(),
