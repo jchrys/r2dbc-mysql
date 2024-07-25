@@ -348,7 +348,8 @@ public final class MySqlConnectionConfiguration {
             zstdCompressionLevel == that.zstdCompressionLevel &&
             Objects.equals(loopResources, that.loopResources) &&
             extensions.equals(that.extensions) &&
-            Objects.equals(passwordPublisher, that.passwordPublisher);
+            Objects.equals(passwordPublisher, that.passwordPublisher) &&
+            Objects.equals(resolver, that.resolver);
     }
 
     @Override
@@ -363,7 +364,7 @@ public final class MySqlConnectionConfiguration {
             loadLocalInfilePath, localInfileBufferSize,
             queryCacheSize, prepareCacheSize,
             compressionAlgorithms, zstdCompressionLevel,
-            loopResources, extensions, passwordPublisher);
+            loopResources, extensions, passwordPublisher, resolver);
     }
 
     @Override
@@ -387,7 +388,9 @@ public final class MySqlConnectionConfiguration {
                 ", compressionAlgorithms=" + compressionAlgorithms +
                 ", zstdCompressionLevel=" + zstdCompressionLevel +
                 ", loopResources=" + loopResources +
-                ", extensions=" + extensions + ", passwordPublisher=" + passwordPublisher + '}';
+                ", extensions=" + extensions + ", passwordPublisher=" + passwordPublisher +
+                ", resolver=" + resolver +
+                '}';
         }
 
         return "MySqlConnectionConfiguration{unixSocket='" + domain +
@@ -408,7 +411,9 @@ public final class MySqlConnectionConfiguration {
             ", compressionAlgorithms=" + compressionAlgorithms +
             ", zstdCompressionLevel=" + zstdCompressionLevel +
             ", loopResources=" + loopResources +
-            ", extensions=" + extensions + ", passwordPublisher=" + passwordPublisher + '}';
+            ", extensions=" + extensions + ", passwordPublisher=" + passwordPublisher +
+            ", resolver=" + resolver +
+            '}';
     }
 
     /**
@@ -1170,6 +1175,16 @@ public final class MySqlConnectionConfiguration {
             return this;
         }
 
+        /**
+         * Sets the {@link AddressResolverGroup} for resolving host addresses.
+         * <p>
+         * This can be used to customize the DNS resolution mechanism, which is particularly useful in environments
+         * with specific DNS configuration needs or where a custom DNS resolver is required.
+         *
+         * @param resolver the resolver group to use for host address resolution.
+         * @return this {@link Builder}.
+         * @since 1.2.0
+         */
         public Builder resolver(AddressResolverGroup<?> resolver) {
             this.resolver = resolver;
             return this;
