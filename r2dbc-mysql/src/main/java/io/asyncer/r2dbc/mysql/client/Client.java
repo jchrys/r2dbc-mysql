@@ -22,6 +22,7 @@ import io.asyncer.r2dbc.mysql.message.client.ClientMessage;
 import io.asyncer.r2dbc.mysql.message.server.ServerMessage;
 import io.netty.buffer.ByteBufAllocator;
 import io.netty.channel.ChannelOption;
+import io.netty.resolver.AddressResolverGroup;
 import io.netty.util.internal.logging.InternalLogger;
 import io.netty.util.internal.logging.InternalLoggerFactory;
 import org.jetbrains.annotations.Nullable;
@@ -132,7 +133,7 @@ public interface Client {
      */
     static Mono<Client> connect(MySqlSslConfiguration ssl, SocketAddress address, boolean tcpKeepAlive,
         boolean tcpNoDelay, ConnectionContext context, @Nullable Duration connectTimeout,
-        LoopResources loopResources) {
+        LoopResources loopResources, @Nullable AddressResolverGroup<?> resolverGroup) {
         requireNonNull(ssl, "ssl must not be null");
         requireNonNull(address, "address must not be null");
         requireNonNull(context, "context must not be null");
@@ -148,6 +149,10 @@ public interface Client {
         if (address instanceof InetSocketAddress) {
             tcpClient = tcpClient.option(ChannelOption.SO_KEEPALIVE, tcpKeepAlive);
             tcpClient = tcpClient.option(ChannelOption.TCP_NODELAY, tcpNoDelay);
+        }
+
+        if (resolverGroup != null) {
+            tcpClient = tcpClient.resolver(resolverGroup);
         }
 
         return tcpClient.remoteAddress(() -> address).connect()

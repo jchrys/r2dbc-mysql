@@ -22,6 +22,8 @@ import io.asyncer.r2dbc.mysql.constant.TlsVersions;
 import io.asyncer.r2dbc.mysql.constant.ZeroDateOption;
 import io.asyncer.r2dbc.mysql.extension.Extension;
 import io.netty.handler.ssl.SslContextBuilder;
+import io.netty.resolver.AddressResolverGroup;
+import io.netty.resolver.DefaultAddressResolverGroup;
 import org.assertj.core.api.ObjectAssert;
 import org.assertj.core.api.ThrowableTypeAssert;
 import org.jetbrains.annotations.Nullable;
@@ -205,6 +207,19 @@ class MySqlConnectionConfigurationTest {
             .as(StepVerifier::create)
             .expectNext("123456")
             .verifyComplete();
+    }
+
+    @Test
+    void validResolver() {
+        final AddressResolverGroup<?> resolver = DefaultAddressResolverGroup.INSTANCE;
+        AddressResolverGroup<?> resolverGroup = MySqlConnectionConfiguration.builder()
+                .host(HOST)
+                .user(USER)
+                .resolver(resolver)
+                .autodetectExtensions(false)
+                .build()
+                .getResolver();
+        assertThat(resolverGroup).isSameAs(resolver);
     }
 
     private static MySqlConnectionConfiguration unixSocketSslMode(SslMode sslMode) {

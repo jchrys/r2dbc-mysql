@@ -22,6 +22,7 @@ import io.asyncer.r2dbc.mysql.constant.ZeroDateOption;
 import io.asyncer.r2dbc.mysql.extension.Extension;
 import io.asyncer.r2dbc.mysql.internal.util.InternalArrays;
 import io.netty.handler.ssl.SslContextBuilder;
+import io.netty.resolver.AddressResolverGroup;
 import org.jetbrains.annotations.Nullable;
 import org.reactivestreams.Publisher;
 import reactor.netty.resources.LoopResources;
@@ -127,6 +128,8 @@ public final class MySqlConnectionConfiguration {
     @Nullable
     private final Publisher<String> passwordPublisher;
 
+    private final AddressResolverGroup<?> resolver;
+
     private MySqlConnectionConfiguration(
         boolean isHost, String domain, int port, MySqlSslConfiguration ssl,
         boolean tcpKeepAlive, boolean tcpNoDelay, @Nullable Duration connectTimeout,
@@ -141,7 +144,8 @@ public final class MySqlConnectionConfiguration {
         int queryCacheSize, int prepareCacheSize,
         Set<CompressionAlgorithm> compressionAlgorithms, int zstdCompressionLevel,
         @Nullable LoopResources loopResources,
-        Extensions extensions, @Nullable Publisher<String> passwordPublisher
+        Extensions extensions, @Nullable Publisher<String> passwordPublisher,
+        @Nullable AddressResolverGroup<?> resolver
     ) {
         this.isHost = isHost;
         this.domain = domain;
@@ -171,6 +175,7 @@ public final class MySqlConnectionConfiguration {
         this.loopResources = loopResources == null ? TcpResources.get() : loopResources;
         this.extensions = extensions;
         this.passwordPublisher = passwordPublisher;
+        this.resolver = resolver;
     }
 
     /**
@@ -299,6 +304,11 @@ public final class MySqlConnectionConfiguration {
     @Nullable
     Publisher<String> getPasswordPublisher() {
         return passwordPublisher;
+    }
+
+    @Nullable
+    AddressResolverGroup<?> getResolver() {
+        return resolver;
     }
 
     @Override
@@ -494,6 +504,9 @@ public final class MySqlConnectionConfiguration {
         @Nullable
         private Publisher<String> passwordPublisher;
 
+        @Nullable
+        private AddressResolverGroup<?> resolver;
+
         /**
          * Builds an immutable {@link MySqlConnectionConfiguration} with current options.
          *
@@ -528,7 +541,7 @@ public final class MySqlConnectionConfiguration {
                 loadLocalInfilePath,
                 localInfileBufferSize, queryCacheSize, prepareCacheSize,
                 compressionAlgorithms, zstdCompressionLevel, loopResources,
-                Extensions.from(extensions, autodetectExtensions), passwordPublisher);
+                Extensions.from(extensions, autodetectExtensions), passwordPublisher, resolver);
         }
 
         /**
@@ -1153,6 +1166,11 @@ public final class MySqlConnectionConfiguration {
          */
         public Builder passwordPublisher(Publisher<String> passwordPublisher) {
             this.passwordPublisher = passwordPublisher;
+            return this;
+        }
+
+        public Builder resolver(AddressResolverGroup<?> resolver) {
+            this.resolver = resolver;
             return this;
         }
 

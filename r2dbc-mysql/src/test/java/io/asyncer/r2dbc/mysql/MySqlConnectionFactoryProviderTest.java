@@ -20,6 +20,8 @@ import io.asyncer.r2dbc.mysql.constant.CompressionAlgorithm;
 import io.asyncer.r2dbc.mysql.constant.SslMode;
 import io.asyncer.r2dbc.mysql.constant.ZeroDateOption;
 import io.netty.handler.ssl.SslContextBuilder;
+import io.netty.resolver.AddressResolverGroup;
+import io.netty.resolver.DefaultAddressResolverGroup;
 import io.r2dbc.spi.ConnectionFactories;
 import io.r2dbc.spi.ConnectionFactoryOptions;
 import io.r2dbc.spi.Option;
@@ -50,6 +52,7 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 import static io.asyncer.r2dbc.mysql.MySqlConnectionFactoryProvider.PASSWORD_PUBLISHER;
+import static io.asyncer.r2dbc.mysql.MySqlConnectionFactoryProvider.RESOLVER;
 import static io.asyncer.r2dbc.mysql.MySqlConnectionFactoryProvider.USE_SERVER_PREPARE_STATEMENT;
 import static io.r2dbc.spi.ConnectionFactoryOptions.CONNECT_TIMEOUT;
 import static io.r2dbc.spi.ConnectionFactoryOptions.DATABASE;
@@ -448,6 +451,19 @@ class MySqlConnectionFactoryProviderTest {
             .option(HOST, "127.0.0.1")
             .option(USER, "root")
             .option(PASSWORD_PUBLISHER, passwordSupplier)
+            .build();
+
+        assertThat(ConnectionFactories.get(options)).isExactlyInstanceOf(MySqlConnectionFactory.class);
+    }
+
+    @Test
+    void validResolver() {
+        final AddressResolverGroup<?> resolver = DefaultAddressResolverGroup.INSTANCE;
+        ConnectionFactoryOptions options = ConnectionFactoryOptions.builder()
+            .option(DRIVER, "mysql")
+            .option(HOST, "127.0.0.1")
+            .option(USER, "root")
+            .option(RESOLVER, resolver)
             .build();
 
         assertThat(ConnectionFactories.get(options)).isExactlyInstanceOf(MySqlConnectionFactory.class);
