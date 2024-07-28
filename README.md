@@ -43,6 +43,9 @@ This driver provides the following features:
 ![MySQL 8.0 status](https://img.shields.io/badge/MySQL%208.0-pass-blue)
 ![MySQL 8.1 status](https://img.shields.io/badge/MySQL%208.1-pass-blue)
 ![MySQL 8.2 status](https://img.shields.io/badge/MySQL%208.2-pass-blue)
+![MySQL 8.3 status](https://img.shields.io/badge/MySQL%208.3-pass-blue)
+![MySQL 8.4 status](https://img.shields.io/badge/MySQL%208.4-pass-blue)
+![MySQL 9.0 status](https://img.shields.io/badge/MySQL%209.0-pass-blue)
 ![MariaDB 10.6 status](https://img.shields.io/badge/MariaDB%2010.6-pass-blue)
 ![MariaDB 10.11 status](https://img.shields.io/badge/MariaDB%2010.11-pass-blue)
 
