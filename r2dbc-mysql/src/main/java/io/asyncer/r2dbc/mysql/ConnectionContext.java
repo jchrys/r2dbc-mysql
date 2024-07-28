@@ -53,6 +53,8 @@ public final class ConnectionContext implements CodecContext {
 
     private final boolean preserveInstants;
 
+    private final boolean tinyInt1isBit;
+
     private int connectionId = -1;
 
     private ServerVersion serverVersion = NONE_VERSION;
@@ -104,16 +106,18 @@ public final class ConnectionContext implements CodecContext {
     private volatile short serverStatuses = ServerStatuses.AUTO_COMMIT;
 
     ConnectionContext(
-        ZeroDateOption zeroDateOption,
-        @Nullable Path localInfilePath,
-        int localInfileBufferSize,
-        boolean preserveInstants,
-        @Nullable ZoneId timeZone
+            ZeroDateOption zeroDateOption,
+            @Nullable Path localInfilePath,
+            int localInfileBufferSize,
+            boolean preserveInstants,
+            boolean tinyInt1isBit,
+            @Nullable ZoneId timeZone
     ) {
         this.zeroDateOption = requireNonNull(zeroDateOption, "zeroDateOption must not be null");
         this.localInfilePath = localInfilePath;
         this.localInfileBufferSize = localInfileBufferSize;
         this.preserveInstants = preserveInstants;
+        this.tinyInt1isBit = tinyInt1isBit;
         this.timeZone = timeZone;
     }
 
@@ -332,5 +336,10 @@ public final class ConnectionContext implements CodecContext {
         short serverStatuses = this.serverStatuses;
         return (serverStatuses & ServerStatuses.IN_TRANSACTION) == 0 &&
             (serverStatuses & ServerStatuses.AUTO_COMMIT) != 0;
+    }
+
+    @Override
+    public boolean isTinyInt1isBit() {
+        return tinyInt1isBit;
     }
 }

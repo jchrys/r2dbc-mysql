@@ -54,7 +54,7 @@ final class BooleanCodec extends AbstractPrimitiveCodec<Boolean> {
     @Override
     public boolean doCanDecode(MySqlReadableMetadata metadata) {
         MySqlType type = metadata.getType();
-        return (type == MySqlType.BIT || type == MySqlType.TINYINT) &&
+        return (type == MySqlType.BIT || type == MySqlType.TINYINT || type == MySqlType.TINYINT_UNSIGNED) &&
             Integer.valueOf(1).equals(metadata.getPrecision());
     }
 

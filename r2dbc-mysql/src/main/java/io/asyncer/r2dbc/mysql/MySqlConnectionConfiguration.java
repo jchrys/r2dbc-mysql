@@ -131,22 +131,24 @@ public final class MySqlConnectionConfiguration {
     @Nullable
     private final AddressResolverGroup<?> resolver;
 
+    private final boolean tinyInt1isBit;
+
     private MySqlConnectionConfiguration(
-        boolean isHost, String domain, int port, MySqlSslConfiguration ssl,
-        boolean tcpKeepAlive, boolean tcpNoDelay, @Nullable Duration connectTimeout,
-        ZeroDateOption zeroDateOption,
-        boolean preserveInstants,
-        String connectionTimeZone,
-        boolean forceConnectionTimeZoneToSession,
-        String user, @Nullable CharSequence password, @Nullable String database,
-        boolean createDatabaseIfNotExist, @Nullable Predicate<String> preferPrepareStatement,
-        List<String> sessionVariables, @Nullable Duration lockWaitTimeout, @Nullable Duration statementTimeout,
-        @Nullable Path loadLocalInfilePath, int localInfileBufferSize,
-        int queryCacheSize, int prepareCacheSize,
-        Set<CompressionAlgorithm> compressionAlgorithms, int zstdCompressionLevel,
-        @Nullable LoopResources loopResources,
-        Extensions extensions, @Nullable Publisher<String> passwordPublisher,
-        @Nullable AddressResolverGroup<?> resolver
+            boolean isHost, String domain, int port, MySqlSslConfiguration ssl,
+            boolean tcpKeepAlive, boolean tcpNoDelay, @Nullable Duration connectTimeout,
+            ZeroDateOption zeroDateOption,
+            boolean preserveInstants,
+            String connectionTimeZone,
+            boolean forceConnectionTimeZoneToSession,
+            String user, @Nullable CharSequence password, @Nullable String database,
+            boolean createDatabaseIfNotExist, @Nullable Predicate<String> preferPrepareStatement,
+            List<String> sessionVariables, @Nullable Duration lockWaitTimeout, @Nullable Duration statementTimeout,
+            @Nullable Path loadLocalInfilePath, int localInfileBufferSize,
+            int queryCacheSize, int prepareCacheSize,
+            Set<CompressionAlgorithm> compressionAlgorithms, int zstdCompressionLevel,
+            @Nullable LoopResources loopResources,
+            Extensions extensions, @Nullable Publisher<String> passwordPublisher,
+            @Nullable AddressResolverGroup<?> resolver, boolean tinyInt1isBit
     ) {
         this.isHost = isHost;
         this.domain = domain;
@@ -177,6 +179,7 @@ public final class MySqlConnectionConfiguration {
         this.extensions = extensions;
         this.passwordPublisher = passwordPublisher;
         this.resolver = resolver;
+        this.tinyInt1isBit = tinyInt1isBit;
     }
 
     /**
@@ -310,6 +313,10 @@ public final class MySqlConnectionConfiguration {
     @Nullable
     AddressResolverGroup<?> getResolver() {
         return resolver;
+    }
+
+    boolean getTinyInt1isBit() {
+        return tinyInt1isBit;
     }
 
     @Override
@@ -498,6 +505,8 @@ public final class MySqlConnectionConfiguration {
         @Nullable
         private AddressResolverGroup<?> resolver;
 
+        private boolean tinyInt1isBit = true;
+
         /**
          * Builds an immutable {@link MySqlConnectionConfiguration} with current options.
          *
@@ -532,7 +541,7 @@ public final class MySqlConnectionConfiguration {
                 loadLocalInfilePath,
                 localInfileBufferSize, queryCacheSize, prepareCacheSize,
                 compressionAlgorithms, zstdCompressionLevel, loopResources,
-                Extensions.from(extensions, autodetectExtensions), passwordPublisher, resolver);
+                Extensions.from(extensions, autodetectExtensions), passwordPublisher, resolver, tinyInt1isBit);
         }
 
         /**
@@ -1172,6 +1181,16 @@ public final class MySqlConnectionConfiguration {
          */
         public Builder resolver(AddressResolverGroup<?> resolver) {
             this.resolver = resolver;
+            return this;
+        }
+
+        /**
+         * Sets
+         * @param tinyInt1isBit
+         * @return
+         */
+        public Builder tinyInt1isBit(boolean tinyInt1isBit) {
+            this.tinyInt1isBit = tinyInt1isBit;
             return this;
         }
 

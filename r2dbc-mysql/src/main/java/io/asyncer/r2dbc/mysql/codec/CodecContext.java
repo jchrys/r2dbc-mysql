@@ -35,6 +35,9 @@ public interface CodecContext {
      */
     boolean isPreserveInstants();
 
+
+    boolean isTinyInt1isBit();
+
     /**
      * Gets the {@link ZoneId} of connection.
      *

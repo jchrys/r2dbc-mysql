@@ -320,6 +320,13 @@ public final class MySqlConnectionFactoryProvider implements ConnectionFactoryPr
      */
     public static final Option<AddressResolverGroup<?>> RESOLVER = Option.valueOf("resolver");
 
+    /**
+     *
+     * @param options
+     * @return
+     */
+    public static final Option<Boolean> TINY_INT_1_IS_BIT = Option.valueOf("tinyInt1isBit");
+
     @Override
     public ConnectionFactory create(ConnectionFactoryOptions options) {
         requireNonNull(options, "connectionFactoryOptions must not be null");
@@ -413,6 +420,8 @@ public final class MySqlConnectionFactoryProvider implements ConnectionFactoryPr
             .to(builder::lockWaitTimeout);
         mapper.optional(STATEMENT_TIMEOUT).as(Duration.class, Duration::parse)
             .to(builder::statementTimeout);
+        mapper.optional(TINY_INT_1_IS_BIT).asBoolean()
+                .to(builder::tinyInt1isBit);
 
         return builder.build();
     }

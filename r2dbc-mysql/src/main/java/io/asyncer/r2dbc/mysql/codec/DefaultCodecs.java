@@ -18,6 +18,7 @@ package io.asyncer.r2dbc.mysql.codec;
 
 import io.asyncer.r2dbc.mysql.MySqlParameter;
 import io.asyncer.r2dbc.mysql.api.MySqlReadableMetadata;
+import io.asyncer.r2dbc.mysql.constant.MySqlType;
 import io.asyncer.r2dbc.mysql.internal.util.InternalArrays;
 import io.asyncer.r2dbc.mysql.message.FieldValue;
 import io.asyncer.r2dbc.mysql.message.LargeFieldValue;
@@ -150,11 +151,12 @@ final class DefaultCodecs implements Codecs {
             return null;
         }
 
-        Class<?> target = chooseClass(metadata, type);
+        Class<?> target = chooseClass(metadata, type, context);
 
         if (value instanceof NormalFieldValue) {
             return decodeNormal((NormalFieldValue) value, metadata, target, binary, context);
-        } else if (value instanceof LargeFieldValue) {
+        }
+        if (value instanceof LargeFieldValue) {
             return decodeMassive((LargeFieldValue) value, metadata, target, binary, context);
         }
 
@@ -171,9 +173,11 @@ final class DefaultCodecs implements Codecs {
 
         if (value.isNull()) {
             return null;
-        } else if (value instanceof NormalFieldValue) {
+        }
+        if (value instanceof NormalFieldValue) {
             return decodeNormal((NormalFieldValue) value, metadata, type, binary, context);
-        } else if (value instanceof LargeFieldValue) {
+        }
+        if (value instanceof LargeFieldValue) {
             return decodeMassive((LargeFieldValue) value, metadata, type, binary, context);
         }
 
@@ -358,9 +362,19 @@ final class DefaultCodecs implements Codecs {
      * @param type     the {@link Class} specified by the user.
      * @return the {@link Class} to use for decoding.
      */
-    private static Class<?> chooseClass(MySqlReadableMetadata metadata, Class<?> type) {
-        Class<?> javaType = metadata.getType().getJavaType();
+    private static Class<?> chooseClass(MySqlReadableMetadata metadata, Class<?> type, CodecContext context) {
+        Class<?> javaType = resolveJavaType(metadata, context);
         return type.isAssignableFrom(javaType) ? javaType : type;
+    }
+
+    private static Class<?> resolveJavaType(final MySqlReadableMetadata metadata, final CodecContext context) {
+        final MySqlType mySqlType = metadata.getType();
+        final Integer precision = metadata.getPrecision();
+        if (precision != null && precision == 1 && context.isTinyInt1isBit() &&
+            (mySqlType == MySqlType.TINYINT || mySqlType == MySqlType.TINYINT_UNSIGNED || mySqlType == MySqlType.BIT)) {
+            return Boolean.class;
+        }
+        return metadata.getType().getJavaType();
     }
 
     static final class Builder implements CodecsBuilder {
