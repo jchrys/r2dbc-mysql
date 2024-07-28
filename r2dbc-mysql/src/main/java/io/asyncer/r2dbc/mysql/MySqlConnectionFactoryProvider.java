@@ -321,9 +321,12 @@ public final class MySqlConnectionFactoryProvider implements ConnectionFactoryPr
     public static final Option<AddressResolverGroup<?>> RESOLVER = Option.valueOf("resolver");
 
     /**
+     * Option to treat TINYINT(1), BIT(1) as Boolean.
+     * <p>
+     * By setting this option, you can ensure that the driver interprets TINYINT(1), BIT(1) columns as boolean
+     * values instead of numeric values.
      *
-     * @param options
-     * @return
+     * @since 1.3.0
      */
     public static final Option<Boolean> TINY_INT_1_IS_BIT = Option.valueOf("tinyInt1isBit");
 

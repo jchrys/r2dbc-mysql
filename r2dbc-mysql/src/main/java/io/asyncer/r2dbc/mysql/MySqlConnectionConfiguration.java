@@ -1185,11 +1185,15 @@ public final class MySqlConnectionConfiguration {
         }
 
         /**
-         * Sets
-         * @param tinyInt1isBit
-         * @return
+         * Option to set the {@link AddressResolverGroup} for resolving host addresses.
+         * <p>
+         * This can be used to customize the DNS resolution mechanism, which is particularly useful in environments
+         * with specific DNS configuration needs or where a custom DNS resolver is required.
+         *
+         * @param tinyInt1isBit true to treat TINYINT(1), BIT(1) as Boolean, false otherwise.
+         * @return this {@link Builder}
          */
-        public Builder tinyInt1isBit(boolean tinyInt1isBit) {
+        public Builder tinyInt1isBit(final boolean tinyInt1isBit) {
             this.tinyInt1isBit = tinyInt1isBit;
             return this;
         }
