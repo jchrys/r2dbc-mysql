@@ -14,7 +14,7 @@ Refer to the table below to determine the appropriate version of r2dbc-mysql for
 
 | spring-boot-starter-data-r2dbc | spring-data-r2dbc | r2dbc-spi     | r2dbc-mysql(recommended)     |
 |--------------------------------|-------------------|---------------|------------------------------|
-| 3.0.* and above                | 3.0.* and above   | 1.0.0.RELEASE | io.asyncer:r2dbc-mysql:1.1.0 |
+| 3.0.* and above                | 3.0.* and above   | 1.0.0.RELEASE | io.asyncer:r2dbc-mysql:1.2.0 |
 | 2.7.*                          | 1.5.*             | 0.9.1.RELEASE | io.asyncer:r2dbc-mysql:0.9.7 |
 | 2.6.* and below                | 1.4.* and below   | 0.8.6.RELEASE | dev.miku:r2dbc-mysql:0.8.2   |
 
@@ -61,7 +61,7 @@ However, Docker-certified images do not have these versions lower than 5.5.0, so
 <dependency>
   <groupId>io.asyncer</groupId>
   <artifactId>r2dbc-mysql</artifactId>
-  <version>1.1.0</version>
+  <version>1.2.0</version>
 </dependency>
 ```
 
@@ -71,7 +71,7 @@ However, Docker-certified images do not have these versions lower than 5.5.0, so
 
 ```groovy
 dependencies {
-    implementation 'io.asyncer:r2dbc-mysql:1.1.0'
+    implementation 'io.asyncer:r2dbc-mysql:1.2.0'
 }
 ```
 
@@ -80,7 +80,7 @@ dependencies {
 ```kotlin
 dependencies {
     // Maybe should to use `compile` instead of `implementation` on the lower version of Gradle.
-    implementation("io.asyncer:r2dbc-mysql:1.1.0")
+    implementation("io.asyncer:r2dbc-mysql:1.2.0")
 }
 ```
 
