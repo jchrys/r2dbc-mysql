@@ -18,6 +18,7 @@ package io.asyncer.r2dbc.mysql.codec;
 
 import io.asyncer.r2dbc.mysql.MySqlParameter;
 import io.asyncer.r2dbc.mysql.api.MySqlReadableMetadata;
+import io.asyncer.r2dbc.mysql.constant.MySqlType;
 import io.asyncer.r2dbc.mysql.internal.util.InternalArrays;
 import io.asyncer.r2dbc.mysql.message.FieldValue;
 import io.asyncer.r2dbc.mysql.message.LargeFieldValue;
@@ -358,9 +359,19 @@ final class DefaultCodecs implements Codecs {
      * @param type     the {@link Class} specified by the user.
      * @return the {@link Class} to use for decoding.
      */
-    private static Class<?> chooseClass(MySqlReadableMetadata metadata, Class<?> type) {
-        Class<?> javaType = metadata.getType().getJavaType();
+    private static Class<?> chooseClass(final MySqlReadableMetadata metadata, Class<?> type) {
+        final Class<?> javaType = getDefaultJavaType(metadata);
         return type.isAssignableFrom(javaType) ? javaType : type;
+    }
+
+    private static Class<?> getDefaultJavaType(final MySqlReadableMetadata metadata) {
+        final MySqlType type = metadata.getType();
+        // ref: https://github.com/asyncer-io/r2dbc-mysql/issues/277
+        // BIT(1) should be treated as Boolean by default.
+        if (type == MySqlType.BIT && Integer.valueOf(1).equals(metadata.getPrecision())) {
+            return Boolean.class;
+        }
+        return type.getJavaType();
     }
 
     static final class Builder implements CodecsBuilder {
