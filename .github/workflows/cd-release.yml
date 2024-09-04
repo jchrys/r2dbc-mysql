@@ -77,7 +77,7 @@ jobs:
     needs: prepare
     steps:
       - name: Download workspace
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4.1.7
         with:
           name: prepare-workspace
           path: ./prepare-workspace/
