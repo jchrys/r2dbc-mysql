@@ -16,11 +16,17 @@
 
 package io.asyncer.r2dbc.mysql.codec;
 
+import io.asyncer.r2dbc.mysql.ConnectionContextTest;
+import io.asyncer.r2dbc.mysql.constant.MySqlType;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
 
+import static org.assertj.core.api.Assertions.assertThat;
+
 import java.nio.charset.Charset;
 import java.util.Arrays;
+
+import org.junit.jupiter.api.Test;
 
 /**
  * Unit tests for {@link BooleanCodec}.
@@ -54,5 +60,31 @@ class BooleanCodecTest implements CodecTestSupport<Boolean> {
     @Override
     public ByteBuf sized(ByteBuf value) {
         return value;
+    }
+
+    @Test
+    void decodeString() {
+        Codec<Boolean> codec = getCodec();
+        Charset c = ConnectionContextTest.mock().getClientCollation().getCharset();
+        Decoding d1 = new Decoding(Unpooled.copiedBuffer("true", c), "true", MySqlType.VARCHAR);
+        Decoding d2 = new Decoding(Unpooled.copiedBuffer("false", c), "false", MySqlType.VARCHAR);
+        Decoding d3 = new Decoding(Unpooled.copiedBuffer("1", c), "1", MySqlType.VARCHAR);
+        Decoding d4 = new Decoding(Unpooled.copiedBuffer("0", c), "0", MySqlType.VARCHAR);
+
+        assertThat(codec.decode(d1.content(), d1.metadata(), Boolean.class, false, ConnectionContextTest.mock()))
+            .as("Decode failed, %s", d1)
+            .isEqualTo(true);
+
+        assertThat(codec.decode(d2.content(), d2.metadata(), Boolean.class, false, ConnectionContextTest.mock()))
+            .as("Decode failed, %s", d2)
+            .isEqualTo(false);
+
+        assertThat(codec.decode(d3.content(), d3.metadata(), Boolean.class, false, ConnectionContextTest.mock()))
+            .as("Decode failed, %s", d3)
+            .isEqualTo(true);
+
+        assertThat(codec.decode(d4.content(), d4.metadata(), Boolean.class, false, ConnectionContextTest.mock()))
+            .as("Decode failed, %s", d4)
+            .isEqualTo(false);
     }
 }

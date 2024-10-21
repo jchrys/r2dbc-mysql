@@ -38,7 +38,18 @@ final class BooleanCodec extends AbstractPrimitiveCodec<Boolean> {
     @Override
     public Boolean decode(ByteBuf value, MySqlReadableMetadata metadata, Class<?> target, boolean binary,
         CodecContext context) {
-        return binary || metadata.getType() == MySqlType.BIT ? value.readBoolean() : value.readByte() != '0';
+        MySqlType dataType = metadata.getType();
+        if (dataType == MySqlType.VARCHAR) {
+            if (value.isReadable()) {
+                String stringVal = value.toString(metadata.getCharCollation(context).getCharset());
+                if (stringVal.equalsIgnoreCase("true") || stringVal.equals("1")) {
+                    return true;
+                } else if (stringVal.equalsIgnoreCase("false") || stringVal.equals("0")) {
+                    return false;
+                }
+            }
+        }
+        return binary || dataType == MySqlType.BIT ? value.readBoolean() : value.readByte() != '0';
     }
 
     @Override
@@ -54,8 +65,8 @@ final class BooleanCodec extends AbstractPrimitiveCodec<Boolean> {
     @Override
     public boolean doCanDecode(MySqlReadableMetadata metadata) {
         MySqlType type = metadata.getType();
-        return (type == MySqlType.BIT || type == MySqlType.TINYINT) &&
-            Integer.valueOf(1).equals(metadata.getPrecision());
+        return ((type == MySqlType.BIT || type == MySqlType.TINYINT) &&
+            Integer.valueOf(1).equals(metadata.getPrecision())) || type == MySqlType.VARCHAR;
     }
 
     private static final class BooleanMySqlParameter extends AbstractMySqlParameter {
