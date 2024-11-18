@@ -73,9 +73,9 @@ class BooleanCodecTest implements CodecTestSupport<Boolean> {
         Decoding d4 = new Decoding(Unpooled.copiedBuffer("0", c), "0", MySqlType.VARCHAR);
         Decoding d5 = new Decoding(Unpooled.copiedBuffer("Y", c), "Y", MySqlType.VARCHAR);
         Decoding d6 = new Decoding(Unpooled.copiedBuffer("no", c), "no", MySqlType.VARCHAR);
-        Decoding d7 = new Decoding(Unpooled.copyDouble(26.57d), 26.57d, MySqlType.DOUBLE);
-        Decoding d8 = new Decoding(Unpooled.copyLong(-57L), -57L, MySqlType.TINYINT);
-        Decoding d9 = new Decoding(Unpooled.copyLong(100000L), 100000L, MySqlType.BIGINT);
+        Decoding d7 = new Decoding(Unpooled.copyDouble(26.57), 26.57, MySqlType.DOUBLE);
+        Decoding d8 = new Decoding(Unpooled.copyLong(-57), -57, MySqlType.TINYINT);
+        Decoding d9 = new Decoding(Unpooled.copyLong(100000), 100000, MySqlType.BIGINT);
         Decoding d10 = new Decoding(Unpooled.copiedBuffer("-12345678901234567890", c),
         "-12345678901234567890", MySqlType.VARCHAR);
         Decoding d11 = new Decoding(Unpooled.copiedBuffer("Banana", c), "Banana", MySqlType.VARCHAR);
