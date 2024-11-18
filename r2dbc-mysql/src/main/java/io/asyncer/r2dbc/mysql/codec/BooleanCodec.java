@@ -46,10 +46,10 @@ final class BooleanCodec extends AbstractPrimitiveCodec<Boolean> {
 
         String s = value.toString(metadata.getCharCollation(context).getCharset());
 
-        if (s.equalsIgnoreCase("Y") || s.equalsIgnoreCase("yes") || 
+        if (s.equalsIgnoreCase("Y") || s.equalsIgnoreCase("yes") ||
         s.equalsIgnoreCase("T") || s.equalsIgnoreCase("true")) {
             return createFromLong(1);
-        } else if (s.equalsIgnoreCase("N") || s.equalsIgnoreCase("no") || 
+        } else if (s.equalsIgnoreCase("N") || s.equalsIgnoreCase("no") ||
         s.equalsIgnoreCase("F") || s.equalsIgnoreCase("false")) {
             return createFromLong(0);
         } else if (s.contains("e") || s.contains("E") || s.matches("-?\\d*\\.\\d*")) {
