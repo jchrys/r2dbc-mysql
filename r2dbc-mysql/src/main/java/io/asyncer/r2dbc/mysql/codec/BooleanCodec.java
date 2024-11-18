@@ -16,6 +16,8 @@
 
 package io.asyncer.r2dbc.mysql.codec;
 
+import java.math.BigInteger;
+
 import io.asyncer.r2dbc.mysql.MySqlParameter;
 import io.asyncer.r2dbc.mysql.ParameterWriter;
 import io.asyncer.r2dbc.mysql.api.MySqlReadableMetadata;
@@ -38,18 +40,27 @@ final class BooleanCodec extends AbstractPrimitiveCodec<Boolean> {
     @Override
     public Boolean decode(ByteBuf value, MySqlReadableMetadata metadata, Class<?> target, boolean binary,
         CodecContext context) {
-        MySqlType dataType = metadata.getType();
-        if (dataType == MySqlType.VARCHAR) {
-            if (value.isReadable()) {
-                String stringVal = value.toString(metadata.getCharCollation(context).getCharset());
-                if (stringVal.equalsIgnoreCase("true") || stringVal.equals("1")) {
-                    return true;
-                } else if (stringVal.equalsIgnoreCase("false") || stringVal.equals("0")) {
-                    return false;
-                }
-            }
+        if (!value.isReadable()) {
+            return createFromLong(0);
         }
-        return binary || dataType == MySqlType.BIT ? value.readBoolean() : value.readByte() != '0';
+
+        String s = value.toString(metadata.getCharCollation(context).getCharset());
+
+        if (s.equalsIgnoreCase("Y") || s.equalsIgnoreCase("yes") || 
+        s.equalsIgnoreCase("T") || s.equalsIgnoreCase("true")) {
+            return createFromLong(1);
+        } else if (s.equalsIgnoreCase("N") || s.equalsIgnoreCase("no") || 
+        s.equalsIgnoreCase("F") || s.equalsIgnoreCase("false")) {
+            return createFromLong(0);
+        } else if (s.contains("e") || s.contains("E") || s.matches("-?\\d*\\.\\d*")) {
+            return createFromDouble(Double.parseDouble(s));
+        } else if (s.matches("-?\\d+")) {
+            if (!CodecUtils.isGreaterThanLongMax(s)) {
+                return createFromLong(CodecUtils.parseLong(value));
+            }
+            return createFromBigInteger(new BigInteger(s));
+        }
+        throw new IllegalArgumentException("Unable to interpret string: " + s);
     }
 
     @Override
@@ -65,8 +76,19 @@ final class BooleanCodec extends AbstractPrimitiveCodec<Boolean> {
     @Override
     public boolean doCanDecode(MySqlReadableMetadata metadata) {
         MySqlType type = metadata.getType();
-        return ((type == MySqlType.BIT || type == MySqlType.TINYINT) &&
-            Integer.valueOf(1).equals(metadata.getPrecision())) || type == MySqlType.VARCHAR;
+        return type == MySqlType.BIT || type == MySqlType.VARCHAR || type.isNumeric();
+    }
+
+    public Boolean createFromLong(long l) {
+        return (l == -1 || l > 0);
+    }
+
+    public Boolean createFromDouble(double d) {
+        return (d == -1.0d || d > 0);
+    }
+
+    public Boolean createFromBigInteger(BigInteger b) {
+        return b.compareTo(BigInteger.valueOf(0)) > 0 || b.compareTo(BigInteger.valueOf(-1)) == 0;
     }
 
     private static final class BooleanMySqlParameter extends AbstractMySqlParameter {
