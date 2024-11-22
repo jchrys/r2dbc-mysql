@@ -40,27 +40,33 @@ final class BooleanCodec extends AbstractPrimitiveCodec<Boolean> {
     @Override
     public Boolean decode(ByteBuf value, MySqlReadableMetadata metadata, Class<?> target, boolean binary,
         CodecContext context) {
-        if (!value.isReadable()) {
-            return createFromLong(0);
-        }
+        MySqlType dataType = metadata.getType();
 
-        String s = value.toString(metadata.getCharCollation(context).getCharset());
-
-        if (s.equalsIgnoreCase("Y") || s.equalsIgnoreCase("yes") ||
-        s.equalsIgnoreCase("T") || s.equalsIgnoreCase("true")) {
-            return createFromLong(1);
-        } else if (s.equalsIgnoreCase("N") || s.equalsIgnoreCase("no") ||
-        s.equalsIgnoreCase("F") || s.equalsIgnoreCase("false")) {
-            return createFromLong(0);
-        } else if (s.contains("e") || s.contains("E") || s.matches("-?\\d*\\.\\d*")) {
-            return createFromDouble(Double.parseDouble(s));
-        } else if (s.matches("-?\\d+")) {
-            if (!CodecUtils.isGreaterThanLongMax(s)) {
-                return createFromLong(CodecUtils.parseLong(value));
+        if (dataType == MySqlType.VARCHAR) {
+            if (!value.isReadable()) {
+                return createFromLong(0);
             }
-            return createFromBigInteger(new BigInteger(s));
+
+            String s = value.toString(metadata.getCharCollation(context).getCharset());
+
+            if (s.equalsIgnoreCase("Y") || s.equalsIgnoreCase("yes") ||
+            s.equalsIgnoreCase("T") || s.equalsIgnoreCase("true")) {
+                return createFromLong(1);
+            } else if (s.equalsIgnoreCase("N") || s.equalsIgnoreCase("no") ||
+            s.equalsIgnoreCase("F") || s.equalsIgnoreCase("false")) {
+                return createFromLong(0);
+            } else if (s.contains("e") || s.contains("E") || s.matches("-?\\d*\\.\\d*")) {
+                return createFromDouble(Double.parseDouble(s));
+            } else if (s.matches("-?\\d+")) {
+                if (!CodecUtils.isGreaterThanLongMax(s)) {
+                    return createFromLong(CodecUtils.parseLong(value));
+                }
+                return createFromBigInteger(new BigInteger(s));
+            }
+            throw new IllegalArgumentException("Unable to interpret string: " + s);
         }
-        throw new IllegalArgumentException("Unable to interpret string: " + s);
+        
+        return binary || dataType == MySqlType.BIT ? value.readBoolean() : value.readByte() != '0';
     }
 
     @Override
@@ -76,7 +82,8 @@ final class BooleanCodec extends AbstractPrimitiveCodec<Boolean> {
     @Override
     public boolean doCanDecode(MySqlReadableMetadata metadata) {
         MySqlType type = metadata.getType();
-        return type == MySqlType.BIT || type == MySqlType.VARCHAR || type.isNumeric();
+        return ((type == MySqlType.BIT || type == MySqlType.TINYINT) &&
+        Integer.valueOf(1).equals(metadata.getPrecision())) || type == MySqlType.VARCHAR;
     }
 
     public Boolean createFromLong(long l) {
