@@ -65,7 +65,7 @@ final class BooleanCodec extends AbstractPrimitiveCodec<Boolean> {
             }
             throw new IllegalArgumentException("Unable to interpret string: " + s);
         }
-        
+
         return binary || dataType == MySqlType.BIT ? value.readBoolean() : value.readByte() != '0';
     }
 
