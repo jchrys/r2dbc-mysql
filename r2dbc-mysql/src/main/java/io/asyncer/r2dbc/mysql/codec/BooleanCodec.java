@@ -55,7 +55,7 @@ final class BooleanCodec extends AbstractPrimitiveCodec<Boolean> {
             } else if (s.equalsIgnoreCase("N") || s.equalsIgnoreCase("no") ||
             s.equalsIgnoreCase("F") || s.equalsIgnoreCase("false")) {
                 return createFromLong(0);
-            } else if (s.contains("e") || s.contains("E") || s.matches("-?\\d*\\.\\d*")) {
+            } else if (s.matches("-?\\d*\\.\\d*") || s.matches("-?\\d*\\.\\d+[eE]-?\\d+")) {
                 return createFromDouble(Double.parseDouble(s));
             } else if (s.matches("-?\\d+")) {
                 if (!CodecUtils.isGreaterThanLongMax(s)) {
