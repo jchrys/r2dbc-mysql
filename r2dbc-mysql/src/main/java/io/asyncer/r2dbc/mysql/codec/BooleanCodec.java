@@ -65,7 +65,7 @@ final class BooleanCodec extends AbstractPrimitiveCodec<Boolean> {
                 }
                 return createFromBigInteger(new BigInteger(s));
             }
-            throw new R2dbcNonTransientResourceException("The value '" + s + "' of type '" + dataType + 
+            throw new R2dbcNonTransientResourceException("The value '" + s + "' of type '" + dataType +
             "' cannot be encoded into a Boolean.", "22018");
         }
 
