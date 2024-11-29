@@ -90,6 +90,9 @@ class BooleanCodecTest implements CodecTestSupport<Boolean> {
         Decoding d14 = new Decoding(Unpooled.copyDouble(26.57d), 26.57d, MySqlType.DOUBLE);
         Decoding d15 = new Decoding(Unpooled.copiedBuffer(bOne), bOne, MySqlType.TINYINT);
         Decoding d16 = new Decoding(Unpooled.copiedBuffer(bZero), bZero, MySqlType.TINYINT);
+        Decoding d17 = new Decoding(Unpooled.copiedBuffer("1e4", c), "1e4", MySqlType.VARCHAR);
+        Decoding d18 = new Decoding(Unpooled.copiedBuffer("-1.34e10", c), "-1.34e10", MySqlType.VARCHAR);
+        Decoding d19 = new Decoding(Unpooled.copiedBuffer("-0", c), "-0", MySqlType.VARCHAR);
 
         assertThat(codec.decode(d1.content(), d1.metadata(), Boolean.class, false, ConnectionContextTest.mock()))
             .as("Decode failed, %s", d1)
@@ -151,7 +154,19 @@ class BooleanCodecTest implements CodecTestSupport<Boolean> {
             .isEqualTo(true);
 
         assertThat(codec.decode(d16.content(), d16.metadata(), Boolean.class, true, ConnectionContextTest.mock()))
-            .as("Decode failed, %s", d14)
+            .as("Decode failed, %s", d16)
+            .isEqualTo(false);
+
+        assertThat(codec.decode(d17.content(), d17.metadata(), Boolean.class, false, ConnectionContextTest.mock()))
+            .as("Decode failed, %s", d17)
+            .isEqualTo(true);
+
+        assertThat(codec.decode(d18.content(), d18.metadata(), Boolean.class, false, ConnectionContextTest.mock()))
+            .as("Decode failed, %s", d18)
+            .isEqualTo(false);
+
+        assertThat(codec.decode(d19.content(), d19.metadata(), Boolean.class, false, ConnectionContextTest.mock()))
+            .as("Decode failed, %s", d19)
             .isEqualTo(false);
     }
 }

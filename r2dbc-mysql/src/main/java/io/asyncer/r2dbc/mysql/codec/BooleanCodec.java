@@ -24,6 +24,7 @@ import io.asyncer.r2dbc.mysql.api.MySqlReadableMetadata;
 import io.asyncer.r2dbc.mysql.constant.MySqlType;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.ByteBufAllocator;
+import io.r2dbc.spi.R2dbcNonTransientResourceException;
 import reactor.core.publisher.Mono;
 
 /**
@@ -55,7 +56,8 @@ final class BooleanCodec extends AbstractPrimitiveCodec<Boolean> {
             } else if (s.equalsIgnoreCase("N") || s.equalsIgnoreCase("no") ||
             s.equalsIgnoreCase("F") || s.equalsIgnoreCase("false")) {
                 return createFromLong(0);
-            } else if (s.matches("-?\\d*\\.\\d*") || s.matches("-?\\d*\\.\\d+[eE]-?\\d+")) {
+            } else if (s.matches("-?\\d*\\.\\d*") || s.matches("-?\\d*\\.\\d+[eE]-?\\d+")
+            || s.matches("-?\\d*[eE]-?\\d+")) {
                 return createFromDouble(Double.parseDouble(s));
             } else if (s.matches("-?\\d+")) {
                 if (!CodecUtils.isGreaterThanLongMax(s)) {
@@ -63,7 +65,8 @@ final class BooleanCodec extends AbstractPrimitiveCodec<Boolean> {
                 }
                 return createFromBigInteger(new BigInteger(s));
             }
-            throw new IllegalArgumentException("Unable to interpret string: " + s);
+            throw new R2dbcNonTransientResourceException("The value '" + s + "' of type '" + dataType + 
+            "' cannot be encoded into a Boolean.", "22018");
         }
 
         return binary || dataType == MySqlType.BIT ? value.readBoolean() : value.readByte() != '0';
