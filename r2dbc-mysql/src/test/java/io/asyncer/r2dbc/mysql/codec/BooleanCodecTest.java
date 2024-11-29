@@ -20,6 +20,7 @@ import io.asyncer.r2dbc.mysql.ConnectionContextTest;
 import io.asyncer.r2dbc.mysql.constant.MySqlType;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
+import io.r2dbc.spi.R2dbcNonTransientException;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -135,7 +136,7 @@ class BooleanCodecTest implements CodecTestSupport<Boolean> {
             .isEqualTo(false);
 
         assertThatThrownBy(() -> {codec.decode(d11.content(), d11.metadata(), Boolean.class, false, ConnectionContextTest.mock());})
-        .isInstanceOf(IllegalArgumentException.class);
+        .isInstanceOf(R2dbcNonTransientException.class);
 
         assertThat(codec.decode(d12.content(), d12.metadata(), Boolean.class, false, ConnectionContextTest.mock()))
             .as("Decode failed, %s", d12)
