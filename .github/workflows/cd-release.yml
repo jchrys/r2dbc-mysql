@@ -21,13 +21,13 @@ jobs:
   prepare:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
-
+      - uses: actions/checkout@v4
       - name: Set Up Java 8
-        uses: actions/setup-java@v3
+
+        uses: actions/setup-java@v4
         with:
-          distribution: 'temurin' # gh runner local caches lts temurins
-          java-version: '8'
+          distribution: "temurin" # gh runner local caches lts temurins
+          java-version: "8"
 
       - name: Setup Git Configs
         run: |
@@ -63,7 +63,7 @@ jobs:
         run: ./.github/scripts/ensure_prepared.sh
 
       - name: Upload workspace
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: prepare-workspace
           path: ${{ github.workspace }}
@@ -77,7 +77,7 @@ jobs:
     needs: prepare
     steps:
       - name: Download workspace
-        uses: actions/download-artifact@v4.1.7
+        uses: actions/download-artifact@v4
         with:
           name: prepare-workspace
           path: ./prepare-workspace/
@@ -88,10 +88,10 @@ jobs:
           chmod 755 ./prepare-workspace/.github/scripts/release_rollback.sh
 
       - name: Set up Java 8
-        uses: actions/setup-java@v3
+        uses: actions/setup-java@v4
         with:
-          distribution: 'temurin' # gh runner local caches lts temurins
-          java-version: '8'
+          distribution: "temurin" # gh runner local caches lts temurins
+          java-version: "8"
 
       - name: Setup git configs
         run: |
@@ -123,7 +123,7 @@ jobs:
 
       - name: Create Local Deploy Directory
         run: mkdir -p ~/local-staging
-        
+
       - name: Prepare Internal Dependencies
         working-directory: ./prepare-workspace/
         run: ./mvnw -B -ntp -pl build-tools clean install -DskipTests -Dcheckstyle.skip
@@ -131,16 +131,14 @@ jobs:
       - name: Import GPG & Deploy Local Staging
         working-directory: ./prepare-workspace/
         run: |
-            cat <(echo -e "${{ secrets.GPG_PRIVATE_KEY }}") | gpg --batch --import
-            ./mvnw -B -ntp -pl r2dbc-mysql clean javadoc:jar package gpg:sign org.sonatype.plugins:nexus-staging-maven-plugin:deploy -DnexusUrl=https://s01.oss.sonatype.org -DserverId=ossrh-staging -DaltStagingDirectory=/home/runner/local-staging -DskipRemoteStaging=true -DskipTests=true -Dcheckstyle.skip -Dgpg.passphrase="${{ secrets.GPG_PASSPHRASE }}" -Dgpg.keyname="${{ secrets.GPG_KEY_NAME }}"
+          cat <(echo -e "${{ secrets.GPG_PRIVATE_KEY }}") | gpg --batch --import
+          ./mvnw -B -ntp -pl r2dbc-mysql clean javadoc:jar package gpg:sign org.sonatype.plugins:nexus-staging-maven-plugin:deploy -DnexusUrl=https://s01.oss.sonatype.org -DserverId=ossrh-staging -DaltStagingDirectory=/home/runner/local-staging -DskipRemoteStaging=true -DskipTests=true -Dcheckstyle.skip -Dgpg.passphrase="${{ secrets.GPG_PASSPHRASE }}" -Dgpg.keyname="${{ secrets.GPG_KEY_NAME }}"
 
       - name: Deploy Local Staged Artifacts
         working-directory: ./prepare-workspace/
         run: ./mvnw -B -ntp -pl r2dbc-mysql --file pom.xml org.sonatype.plugins:nexus-staging-maven-plugin:deploy-staged -DnexusUrl=https://s01.oss.sonatype.org -DserverId=ossrh-staging -DaltStagingDirectory=/home/runner/local-staging -DskipStagingRepositoryClose=true -Dcheckstyle.skip
 
-
       - name: Rollback Release
         working-directory: ./prepare-workspace/
         if: ${{ failure() }}
         run: ./.github/scripts/release_rollback.sh trunk
-
