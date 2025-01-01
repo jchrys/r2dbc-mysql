@@ -67,6 +67,8 @@ jobs:
         with:
           name: prepare-workspace
           path: ${{ github.workspace }}
+          include-hidden-files: true
+
       - name: Rollback Release
         working-directory: ./prepare-workspace/
         if: ${{ failure() }}
