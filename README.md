@@ -1,4 +1,5 @@
 # Reactive Relational Database Connectivity MySQL Implementation
+
 ![Maven Central](https://img.shields.io/maven-central/v/io.asyncer/r2dbc-mysql?color=blue)
 ![LICENSE](https://img.shields.io/github/license/asyncer-io/r2dbc-mysql)
 
@@ -10,15 +11,17 @@ delegate to. See [R2DBC Homepage](https://r2dbc.io).
 See [R2DBC MySQL wiki](https://github.com/asyncer-io/r2dbc-mysql/wiki) for more information.
 
 ## Spring-framework and R2DBC-SPI Compatibility
+
 Refer to the table below to determine the appropriate version of r2dbc-mysql for your project.
 
 | spring-boot-starter-data-r2dbc | spring-data-r2dbc | r2dbc-spi     | r2dbc-mysql(recommended)     |
 |--------------------------------|-------------------|---------------|------------------------------|
-| 3.0.* and above                | 3.0.* and above   | 1.0.0.RELEASE | io.asyncer:r2dbc-mysql:1.2.0 |
+| 3.0.* and above                | 3.0.* and above   | 1.0.0.RELEASE | io.asyncer:r2dbc-mysql:1.3.1 |
 | 2.7.*                          | 1.5.*             | 0.9.1.RELEASE | io.asyncer:r2dbc-mysql:0.9.7 |
 | 2.6.* and below                | 1.4.* and below   | 0.8.6.RELEASE | dev.miku:r2dbc-mysql:0.8.2   |
 
 ## Supported Features
+
 This driver provides the following features:
 
 - [x] Unix domain socket.
@@ -37,6 +40,7 @@ This driver provides the following features:
 - [x] MariaDB `RETURNING` clause.
 
 ## Version compatibility / Integration tests states
+
 ![MySQL 5.5 status](https://img.shields.io/badge/MySQL%205.5-pass-blue)
 ![MySQL 5.6 status](https://img.shields.io/badge/MySQL%205.6-pass-blue)
 ![MySQL 5.7 status](https://img.shields.io/badge/MySQL%205.7-pass-blue)
@@ -49,7 +53,6 @@ This driver provides the following features:
 ![MariaDB 10.6 status](https://img.shields.io/badge/MariaDB%2010.6-pass-blue)
 ![MariaDB 10.11 status](https://img.shields.io/badge/MariaDB%2010.11-pass-blue)
 
-
 In fact, it supports lower versions, in the theory, such as 4.1, 4.0, etc.
 
 However, Docker-certified images do not have these versions lower than 5.5.0, so tests are not integrated on these versions.
@@ -61,7 +64,7 @@ However, Docker-certified images do not have these versions lower than 5.5.0, so
 <dependency>
   <groupId>io.asyncer</groupId>
   <artifactId>r2dbc-mysql</artifactId>
-  <version>1.2.0</version>
+  <version>1.3.1</version>
 </dependency>
 ```
 
@@ -71,7 +74,7 @@ However, Docker-certified images do not have these versions lower than 5.5.0, so
 
 ```groovy
 dependencies {
-    implementation 'io.asyncer:r2dbc-mysql:1.2.0'
+    implementation 'io.asyncer:r2dbc-mysql:1.3.1'
 }
 ```
 
@@ -80,7 +83,7 @@ dependencies {
 ```kotlin
 dependencies {
     // Maybe should to use `compile` instead of `implementation` on the lower version of Gradle.
-    implementation("io.asyncer:r2dbc-mysql:1.2.0")
+    implementation("io.asyncer:r2dbc-mysql:1.3.1")
 }
 ```
 
@@ -113,7 +116,7 @@ See [Usage](https://github.com/asyncer-io/r2dbc-mysql/wiki/usage) wiki for more 
 
 ## Reporting Issues
 
-The R2DBC MySQL Implementation uses GitHub as issue tracking system to record bugs and feature requests. 
+The R2DBC MySQL Implementation uses GitHub as issue tracking system to record bugs and feature requests.
 If you want to raise an issue, please follow the recommendations below:
 
 - Before log a bug, please search the [issue tracker](https://github.com/asyncer-io/r2dbc-mysql/issues) to see if someone has already reported the problem.
@@ -152,7 +155,7 @@ Thanks a lot for your support!
 
 ## Supports
 
-- [R2DBC Team](https://r2dbc.io) - Thanks for their support by sharing all relevant resources around R2DBC 
+- [R2DBC Team](https://r2dbc.io) - Thanks for their support by sharing all relevant resources around R2DBC
   projects.
 
 [m]: https://www.mysql.com
