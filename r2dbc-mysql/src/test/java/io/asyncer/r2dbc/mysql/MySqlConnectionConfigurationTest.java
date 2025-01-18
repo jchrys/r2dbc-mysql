@@ -222,6 +222,19 @@ class MySqlConnectionConfigurationTest {
         assertThat(resolverGroup).isSameAs(resolver);
     }
 
+    @Test
+    void invalidMetrics() {
+        // throw exception when metrics true without micrometer-core dependency
+        assertThatIllegalArgumentException().isThrownBy(() ->
+            MySqlConnectionConfiguration
+                .builder()
+                .host(HOST)
+                .user(USER)
+                .metrics(true)
+                .build()
+        );
+    }
+
     private static MySqlConnectionConfiguration unixSocketSslMode(SslMode sslMode) {
         return MySqlConnectionConfiguration.builder()
             .unixSocket(UNIX_SOCKET)

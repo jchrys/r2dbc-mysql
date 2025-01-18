@@ -148,7 +148,8 @@ public final class MySqlConnectionFactory implements ConnectionFactory {
             context,
             configuration.getConnectTimeout(),
             configuration.getLoopResources(),
-            configuration.getResolver()
+            configuration.getResolver(),
+            configuration.isMetrics()
         )).flatMap(client -> {
             // Lazy init database after handshake/login
             boolean deferDatabase = configuration.isCreateDatabaseIfNotExist();
