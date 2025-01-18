@@ -127,19 +127,21 @@ public interface Client {
      * @param context        the connection context
      * @param connectTimeout connect timeout, or {@code null} if it has no timeout
      * @param loopResources  the loop resources to use
+     * @param metrics        if enable the {@link TcpClient#metrics)}
      * @return A {@link Mono} that will emit a connected {@link Client}.
      * @throws IllegalArgumentException if {@code ssl}, {@code address} or {@code context} is {@code null}.
      * @throws ArithmeticException      if {@code connectTimeout} milliseconds overflow as an int
      */
     static Mono<Client> connect(MySqlSslConfiguration ssl, SocketAddress address, boolean tcpKeepAlive,
         boolean tcpNoDelay, ConnectionContext context, @Nullable Duration connectTimeout,
-        LoopResources loopResources, @Nullable AddressResolverGroup<?> resolver) {
+        LoopResources loopResources, @Nullable AddressResolverGroup<?> resolver, boolean metrics) {
         requireNonNull(ssl, "ssl must not be null");
         requireNonNull(address, "address must not be null");
         requireNonNull(context, "context must not be null");
 
         TcpClient tcpClient = TcpClient.newConnection()
-            .runOn(loopResources);
+            .runOn(loopResources)
+            .metrics(metrics);
 
         if (connectTimeout != null) {
             tcpClient = tcpClient.option(ChannelOption.CONNECT_TIMEOUT_MILLIS,

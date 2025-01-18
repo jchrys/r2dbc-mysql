@@ -51,6 +51,7 @@ import java.util.function.Predicate;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
+import static io.asyncer.r2dbc.mysql.MySqlConnectionFactoryProvider.METRICS;
 import static io.asyncer.r2dbc.mysql.MySqlConnectionFactoryProvider.PASSWORD_PUBLISHER;
 import static io.asyncer.r2dbc.mysql.MySqlConnectionFactoryProvider.RESOLVER;
 import static io.asyncer.r2dbc.mysql.MySqlConnectionFactoryProvider.USE_SERVER_PREPARE_STATEMENT;
@@ -467,6 +468,18 @@ class MySqlConnectionFactoryProviderTest {
             .build();
 
         assertThat(ConnectionFactories.get(options)).isExactlyInstanceOf(MySqlConnectionFactory.class);
+    }
+
+    @Test
+    void invalidMetrics() {
+        // throw exception when metrics true without micrometer-core dependency
+        assertThatIllegalArgumentException().isThrownBy(() ->
+            ConnectionFactories.get(ConnectionFactoryOptions.builder()
+                .option(DRIVER, "mysql")
+                .option(HOST, "127.0.0.1")
+                .option(USER, "root")
+                .option(METRICS, true)
+                .build()));
     }
 
     @Test

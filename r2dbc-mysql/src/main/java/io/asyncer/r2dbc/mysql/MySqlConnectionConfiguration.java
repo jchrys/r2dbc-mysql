@@ -25,6 +25,7 @@ import io.netty.handler.ssl.SslContextBuilder;
 import io.netty.resolver.AddressResolverGroup;
 import org.jetbrains.annotations.Nullable;
 import org.reactivestreams.Publisher;
+import reactor.netty.internal.util.Metrics;
 import reactor.netty.resources.LoopResources;
 import reactor.netty.tcp.TcpResources;
 
@@ -131,6 +132,8 @@ public final class MySqlConnectionConfiguration {
     @Nullable
     private final AddressResolverGroup<?> resolver;
 
+    private final boolean metrics;
+
     private MySqlConnectionConfiguration(
         boolean isHost, String domain, int port, MySqlSslConfiguration ssl,
         boolean tcpKeepAlive, boolean tcpNoDelay, @Nullable Duration connectTimeout,
@@ -146,7 +149,8 @@ public final class MySqlConnectionConfiguration {
         Set<CompressionAlgorithm> compressionAlgorithms, int zstdCompressionLevel,
         @Nullable LoopResources loopResources,
         Extensions extensions, @Nullable Publisher<String> passwordPublisher,
-        @Nullable AddressResolverGroup<?> resolver
+        @Nullable AddressResolverGroup<?> resolver,
+        boolean metrics
     ) {
         this.isHost = isHost;
         this.domain = domain;
@@ -177,6 +181,7 @@ public final class MySqlConnectionConfiguration {
         this.extensions = extensions;
         this.passwordPublisher = passwordPublisher;
         this.resolver = resolver;
+        this.metrics = metrics;
     }
 
     /**
@@ -312,6 +317,10 @@ public final class MySqlConnectionConfiguration {
         return resolver;
     }
 
+    boolean isMetrics() {
+        return metrics;
+    }
+
     @Override
     public boolean equals(Object o) {
         if (this == o) {
@@ -349,7 +358,8 @@ public final class MySqlConnectionConfiguration {
             Objects.equals(loopResources, that.loopResources) &&
             extensions.equals(that.extensions) &&
             Objects.equals(passwordPublisher, that.passwordPublisher) &&
-            Objects.equals(resolver, that.resolver);
+            Objects.equals(resolver, that.resolver) &&
+            metrics == that.metrics;
     }
 
     @Override
@@ -364,7 +374,7 @@ public final class MySqlConnectionConfiguration {
             loadLocalInfilePath, localInfileBufferSize,
             queryCacheSize, prepareCacheSize,
             compressionAlgorithms, zstdCompressionLevel,
-            loopResources, extensions, passwordPublisher, resolver);
+            loopResources, extensions, passwordPublisher, resolver, metrics);
     }
 
     @Override
@@ -398,7 +408,8 @@ public final class MySqlConnectionConfiguration {
                 ", loopResources=" + loopResources +
                 ", extensions=" + extensions +
                 ", passwordPublisher=" + passwordPublisher +
-                ", resolver=" + resolver;
+                ", resolver=" + resolver +
+                ", metrics=" + metrics;
     }
 
     /**
@@ -498,6 +509,8 @@ public final class MySqlConnectionConfiguration {
         @Nullable
         private AddressResolverGroup<?> resolver;
 
+        private boolean metrics;
+
         /**
          * Builds an immutable {@link MySqlConnectionConfiguration} with current options.
          *
@@ -532,7 +545,7 @@ public final class MySqlConnectionConfiguration {
                 loadLocalInfilePath,
                 localInfileBufferSize, queryCacheSize, prepareCacheSize,
                 compressionAlgorithms, zstdCompressionLevel, loopResources,
-                Extensions.from(extensions, autodetectExtensions), passwordPublisher, resolver);
+                Extensions.from(extensions, autodetectExtensions), passwordPublisher, resolver, metrics);
         }
 
         /**
@@ -1172,6 +1185,25 @@ public final class MySqlConnectionConfiguration {
          */
         public Builder resolver(AddressResolverGroup<?> resolver) {
             this.resolver = resolver;
+            return this;
+        }
+
+        /**
+         * Option to enable metrics to be collected and registered in Micrometer's globalRegistry
+         * with {@link reactor.netty.tcp.TcpClient#metrics(boolean)}. Defaults to {@code false}.
+         * <p>
+         * Note: It is required to add {@code io.micrometer.micrometer-core} dependency to classpath.
+         *
+         * @param enabled enable metrics for {@link reactor.netty.tcp.TcpClient}.
+         * @return this {@link Builder}
+         * @throws IllegalArgumentException if {@code io.micrometer:micrometer-core} is not on the classpath.
+         * @since 1.3.2
+         */
+        public Builder metrics(boolean enabled) {
+            require(!enabled || Metrics.isMicrometerAvailable(),
+            "dependency `io.micrometer:micrometer-core` must be added to classpath if metrics enabled"
+            );
+            this.metrics = enabled;
             return this;
         }
 

@@ -320,6 +320,16 @@ public final class MySqlConnectionFactoryProvider implements ConnectionFactoryPr
      */
     public static final Option<AddressResolverGroup<?>> RESOLVER = Option.valueOf("resolver");
 
+    /**
+     * Option to enable metrics to be collected and registered in Micrometer's globalRegistry
+     * with {@link reactor.netty.tcp.TcpClient#metrics(boolean)}. Defaults to {@code false}.
+     * <p>
+     * Note: It is required to add {@code io.micrometer.micrometer-core} dependency to classpath.
+     *
+     * @since 1.3.2
+     */
+    public static final Option<Boolean> METRICS = Option.valueOf("metrics");
+
     @Override
     public ConnectionFactory create(ConnectionFactoryOptions options) {
         requireNonNull(options, "connectionFactoryOptions must not be null");
@@ -413,6 +423,8 @@ public final class MySqlConnectionFactoryProvider implements ConnectionFactoryPr
             .to(builder::lockWaitTimeout);
         mapper.optional(STATEMENT_TIMEOUT).as(Duration.class, Duration::parse)
             .to(builder::statementTimeout);
+        mapper.optional(METRICS).asBoolean()
+            .to(builder::metrics);
 
         return builder.build();
     }
