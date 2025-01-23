@@ -19,7 +19,7 @@
 
   <groupId>io.asyncer</groupId>
   <artifactId>r2dbc-mysql</artifactId>
-  <version>1.3.2-SNAPSHOT</version>
+  <version>1.3.2</version>
 
   <name>Reactive Relational Database Connectivity - MySQL</name>
   <url>https://github.com/asyncer-io/r2dbc-mysql</url>
@@ -61,7 +61,7 @@
     <connection>scm:git:git://github.com/asyncer-io/r2dbc-mysql.git</connection>
     <developerConnection>scm:git:ssh://git@github.com/asyncer-io/r2dbc-mysql.git</developerConnection>
     <url>https://github.com/asyncer-io/r2dbc-mysql</url>
-    <tag>HEAD</tag>
+    <tag>r2dbc-mysql-1.3.2</tag>
   </scm>
 
   <properties>
