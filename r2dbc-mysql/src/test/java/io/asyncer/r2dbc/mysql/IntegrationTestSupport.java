@@ -16,132 +16,49 @@
 
 package io.asyncer.r2dbc.mysql;
 
-import io.asyncer.r2dbc.mysql.api.MySqlConnection;
-import io.asyncer.r2dbc.mysql.internal.util.TestContainerExtension;
-import io.asyncer.r2dbc.mysql.internal.util.TestServerUtil;
-import io.r2dbc.spi.R2dbcBadGrammarException;
-import io.r2dbc.spi.R2dbcTimeoutException;
-import io.r2dbc.spi.Result;
-import org.junit.jupiter.api.extension.ExtendWith;
-import org.reactivestreams.Publisher;
-import reactor.core.publisher.Flux;
-import reactor.core.publisher.Mono;
-import reactor.test.StepVerifier;
-
-import java.net.URISyntaxException;
-import java.net.URL;
-import java.nio.file.Path;
-import java.nio.file.Paths;
-import java.time.Duration;
-import java.util.Objects;
 import java.util.function.Function;
 
-import static org.assertj.core.api.Assertions.assertThat;
-
 /**
- * Base class considers connection factory and general function for integration tests.
+ * Base class for integration tests that provides connection factory and test utilities.
+ * <p>
+ * This class extends {@link AbstractMySqlContainerHolder} which manages the TestContainer lifecycle
+ * and provides both R2DBC and JDBC connection access.
  */
-@ExtendWith(TestContainerExtension.class)
-abstract class IntegrationTestSupport {
+abstract class IntegrationTestSupport extends AbstractMySqlContainerHolder {
 
-    private final MySqlConnectionFactory connectionFactory;
-
+    /**
+     * Constructor that accepts a custom configuration.
+     *
+     * @param configuration the R2DBC connection configuration
+     */
     IntegrationTestSupport(MySqlConnectionConfiguration configuration) {
-        this.connectionFactory = MySqlConnectionFactory.from(configuration);
+        super(builder ->
+            // Override all builder properties with the provided configuration
+            builder.host(configuration.getDomain())
+                .port(configuration.getPort())
+                .user(configuration.getUser())
+                .password(configuration.getPassword() != null ?
+                    new String(configuration.getPassword()) : null)
+                .database(configuration.getDatabase())
+                .connectTimeout(configuration.getConnectTimeout())
+        );
     }
 
-    void complete(Function<? super MySqlConnection, Publisher<?>> runner) {
-        process(runner).verifyComplete();
+    /**
+     * Default constructor using base configuration.
+     */
+    IntegrationTestSupport() {
+        super();
     }
 
-    void badGrammar(Function<? super MySqlConnection, Publisher<?>> runner) {
-        process(runner).verifyError(R2dbcBadGrammarException.class);
-    }
-
-    void timeout(Function<? super MySqlConnection, Publisher<?>> runner) {
-        process(runner).verifyError(R2dbcTimeoutException.class);
-    }
-
-    void illegalArgument(Function<? super MySqlConnection, Publisher<?>> runner) {
-        process(runner).expectError(IllegalArgumentException.class).verify(Duration.ofSeconds(3));
-    }
-
-    Mono<? extends MySqlConnection> create() {
-        return connectionFactory.create();
-    }
-
-    StepVerifier.FirstStep<Void> process(Function<? super MySqlConnection, Publisher<?>> runner) {
-        return create()
-            .flatMap(connection -> Flux.from(runner.apply(connection))
-                .onErrorResume(e -> connection.close().then(Mono.error(e)))
-                .concatWith(connection.close().then(Mono.empty()))
-                .then())
-            .as(StepVerifier::create);
-    }
-
-    static Mono<Long> extractRowsUpdated(Result result) {
-        return Mono.from(result.getRowsUpdated());
-    }
-
-    static MySqlConnectionConfiguration configuration(
+    /**
+     * Constructor with configuration customizer.
+     *
+     * @param customizer function to customize the connection configuration builder
+     */
+    IntegrationTestSupport(
         Function<MySqlConnectionConfiguration.Builder, MySqlConnectionConfiguration.Builder> customizer
     ) {
-
-        String localInfilePath;
-
-        try {
-            URL url = Objects.requireNonNull(IntegrationTestSupport.class.getResource("/local/"));
-            Path path = Paths.get(url.toURI());
-            localInfilePath = path.toString();
-        } catch (URISyntaxException e) {
-            throw new RuntimeException(e);
-        }
-
-        MySqlConnectionConfiguration.Builder builder = MySqlConnectionConfiguration.builder()
-            .host(TestServerUtil.getHost())
-            .port(TestServerUtil.getPort())
-            .user(TestServerUtil.getUsername())
-            .password(TestServerUtil.getPassword())
-            .database(TestServerUtil.getDatabase())
-            .connectTimeout(Duration.ofSeconds(3))
-            .allowLoadLocalInfileInPath(localInfilePath);
-
-        return customizer.apply(builder).build();
-    }
-
-    boolean envIsLessThanMySql56() {
-        if (TestServerUtil.isMariaDb()) {
-            return false;
-        }
-        final ServerVersion ver = TestServerUtil.getServerVersion();
-        return ver.isLessThan(ServerVersion.create(5, 6, 0));
-    }
-
-    boolean envIsLessThanMySql578OrMariaDb102() {
-        final ServerVersion ver = TestServerUtil.getServerVersion();
-        if (TestServerUtil.isMariaDb()) {
-            return ver.isLessThan(ServerVersion.create(10, 2, 0));
-        }
-
-        return ver.isLessThan(ServerVersion.create(5, 7, 8));
-    }
-
-    static boolean envIsMariaDb10_5_1() {
-        if (!TestServerUtil.isMariaDb()) {
-            return false;
-        }
-
-        final ServerVersion ver = TestServerUtil.getServerVersion();
-
-        return ver.isGreaterThanOrEqualTo(ServerVersion.create(10, 5, 1));
-    }
-
-    boolean envIsLessThanMySql574OrMariaDb1011() {
-        final ServerVersion ver = TestServerUtil.getServerVersion();
-        if (TestServerUtil.isMariaDb()) {
-            return ver.isLessThan(ServerVersion.create(10, 1, 1));
-        }
-
-        return ver.isLessThan(ServerVersion.create(5, 7, 4));
+        super(customizer);
     }
 }
