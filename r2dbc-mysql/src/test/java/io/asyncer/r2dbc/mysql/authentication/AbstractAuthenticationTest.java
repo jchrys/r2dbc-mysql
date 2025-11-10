@@ -38,26 +38,25 @@ import java.time.Duration;
 import java.util.function.Function;
 
 /**
- * Abstract base class for authentication integration tests.
+ * Base class providing common utilities for authentication integration tests.
  * <p>
- * Provides common infrastructure for testing different MySQL authentication methods.
- * Subclasses only need to provide the MySQL version and authentication plugin name.
+ * This class provides JDBC and R2DBC utilities, but does NOT manage container lifecycle.
+ * Container lifecycle management is delegated to concrete subclasses
+ * (e.g., AbstractMySqlNativePasswordTest) which use static containers to ensure
+ * all tests of the same authentication type share a single container instance.
  * <p>
- * All tests extending the same subclass share the same MySQL container instance.
- * The container is started once per subclass and stopped on shutdown.
+ * Subclasses must implement:
+ * <ul>
+ *   <li>{@link #getContainer()} - provide access to the static container</li>
+ *   <li>{@link #getJdbcDataSource()} - provide access to the JDBC datasource</li>
+ * </ul>
  */
 public abstract class AbstractAuthenticationTest {
 
-    private static final String DEFAULT_USERNAME = "root";
-    private static final String DEFAULT_PASSWORD = "test";
-    private static final String DEFAULT_DATABASE = "test";
-
-    private final MySQLContainer<?> container;
-    private final HikariDataSource jdbcDataSource;
     protected final MySqlConnectionFactory connectionFactory;
 
     /**
-     * Constructor initializes the MySQL container with the specific version and authentication plugin.
+     * Default constructor using default configuration.
      */
     protected AbstractAuthenticationTest() {
         this(builder -> builder);
@@ -72,9 +71,7 @@ public abstract class AbstractAuthenticationTest {
             Function<MySqlConnectionConfiguration.Builder,
                      MySqlConnectionConfiguration.Builder> customizer) {
 
-        this.container = createContainer();
-        this.container.start();
-        this.jdbcDataSource = createJdbcDataSource();
+        MySQLContainer<?> container = getContainer();
 
         MySqlConnectionConfiguration.Builder builder =
             MySqlConnectionConfiguration.builder()
@@ -88,54 +85,36 @@ public abstract class AbstractAuthenticationTest {
         this.connectionFactory = MySqlConnectionFactory.from(
             customizer.apply(builder).build()
         );
-
-        // Register shutdown hook for this instance
-        Runtime.getRuntime().addShutdownHook(new Thread(() -> {
-            if (jdbcDataSource != null && !jdbcDataSource.isClosed()) {
-                jdbcDataSource.close();
-            }
-            if (container != null && container.isRunning()) {
-                container.stop();
-            }
-        }));
     }
 
-    // ========== Template Methods (must be implemented by subclasses) ==========
+    // ========== Abstract Methods (implemented by subclasses) ==========
 
     /**
-     * Get the MySQL version to use for the container.
-     * Example: "5.7.44", "8.0.35"
+     * Get the MySQL container instance.
+     * Subclasses provide their static container instance.
      *
-     * @return the MySQL version string
+     * @return the MySQL container
      */
-    protected abstract String getMySqlVersion();
+    protected abstract MySQLContainer<?> getContainer();
 
     /**
-     * Get the authentication plugin to use.
-     * Example: "mysql_native_password", "caching_sha2_password", "sha256_password"
+     * Get the JDBC datasource for this container.
+     * Subclasses provide their static datasource instance.
      *
-     * @return the authentication plugin name
+     * @return the JDBC datasource
      */
-    protected abstract String getAuthenticationPlugin();
-
-    // ========== Container Creation ==========
-
-    @SuppressWarnings("resource")
-    private MySQLContainer<?> createContainer() {
-        return new MySQLContainer<>("mysql:" + getMySqlVersion())
-            .withUsername(DEFAULT_USERNAME)
-            .withPassword(DEFAULT_PASSWORD)
-            .withDatabaseName(DEFAULT_DATABASE)
-            .withCommand(
-                "--default-authentication-plugin=" + getAuthenticationPlugin(),
-                "--character-set-server=utf8mb4",
-                "--collation-server=utf8mb4_unicode_ci"
-            );
-    }
+    protected abstract HikariDataSource getJdbcDataSource();
 
     // ========== JDBC Utilities ==========
 
-    private HikariDataSource createJdbcDataSource() {
+    /**
+     * Create a HikariCP datasource for the given container.
+     * Helper method for subclasses to use in their static initialization.
+     *
+     * @param container the MySQL container
+     * @return configured HikariDataSource
+     */
+    protected static HikariDataSource createJdbcDataSource(MySQLContainer<?> container) {
         HikariConfig config = new HikariConfig();
         config.setJdbcUrl(String.format(
             "jdbc:mysql://%s:%d/%s",
@@ -158,7 +137,7 @@ public abstract class AbstractAuthenticationTest {
      * @throws SQLException if a database access error occurs
      */
     protected Connection getJdbcConnection() throws SQLException {
-        return jdbcDataSource.getConnection();
+        return getJdbcDataSource().getConnection();
     }
 
     /**
@@ -177,16 +156,17 @@ public abstract class AbstractAuthenticationTest {
     // ========== User Management Helpers ==========
 
     /**
-     * Create a MySQL user with the configured authentication plugin.
+     * Create a MySQL user with a specific authentication plugin.
      *
      * @param username the username
      * @param password the password
+     * @param authPlugin the authentication plugin name
      * @throws SQLException if a database access error occurs
      */
-    protected void createUser(String username, String password) throws SQLException {
+    protected void createUser(String username, String password, String authPlugin) throws SQLException {
         executeJdbc(String.format(
             "CREATE USER '%s'@'%%' IDENTIFIED WITH %s BY '%s'",
-            username, getAuthenticationPlugin(), password
+            username, authPlugin, password
         ));
     }
 
@@ -288,16 +268,7 @@ public abstract class AbstractAuthenticationTest {
         return Mono.from(result.getRowsUpdated());
     }
 
-    // ========== Container Access ==========
-
-    /**
-     * Get the underlying MySQL container.
-     *
-     * @return the MySQL container instance
-     */
-    protected MySQLContainer<?> getContainer() {
-        return container;
-    }
+    // ========== Server Info ==========
 
     /**
      * Get server version string.

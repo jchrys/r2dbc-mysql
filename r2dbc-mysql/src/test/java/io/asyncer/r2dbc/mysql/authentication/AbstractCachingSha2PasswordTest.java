@@ -16,15 +16,19 @@
 
 package io.asyncer.r2dbc.mysql.authentication;
 
+import com.zaxxer.hikari.HikariDataSource;
 import io.asyncer.r2dbc.mysql.MySqlConnectionConfiguration;
+import org.testcontainers.containers.MySQLContainer;
 
+import java.sql.SQLException;
 import java.util.function.Function;
 
 /**
  * Base class for caching_sha2_password authentication tests.
  * <p>
- * Uses MySQL 8.0+ with caching_sha2_password as the default authentication plugin (MySQL 8.0 default).
- * All tests extending this class share the same MySQL 8.0 container instance.
+ * Uses MySQL 8.0 with caching_sha2_password as the default authentication plugin.
+ * All tests extending this class share the same MySQL 8.0 container instance
+ * for optimal performance.
  * <p>
  * This authentication method supports RSA public key encryption.
  */
@@ -32,6 +36,45 @@ public abstract class AbstractCachingSha2PasswordTest extends AbstractAuthentica
 
     private static final String MYSQL_VERSION = "8.0.35";
     private static final String AUTH_PLUGIN = "caching_sha2_password";
+    private static final String DEFAULT_USERNAME = "root";
+    private static final String DEFAULT_PASSWORD = "test";
+    private static final String DEFAULT_DATABASE = "test";
+
+    // Shared static container - one instance for all test classes
+    private static final MySQLContainer<?> CONTAINER;
+    private static final HikariDataSource JDBC_DATASOURCE;
+
+    static {
+        // Create and start container once
+        CONTAINER = createMySqlContainer();
+        CONTAINER.start();
+
+        // Create JDBC datasource
+        JDBC_DATASOURCE = createJdbcDataSource(CONTAINER);
+
+        // Register shutdown hook once
+        Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+            if (JDBC_DATASOURCE != null && !JDBC_DATASOURCE.isClosed()) {
+                JDBC_DATASOURCE.close();
+            }
+            if (CONTAINER != null && CONTAINER.isRunning()) {
+                CONTAINER.stop();
+            }
+        }));
+    }
+
+    @SuppressWarnings("resource")
+    private static MySQLContainer<?> createMySqlContainer() {
+        return new MySQLContainer<>("mysql:" + MYSQL_VERSION)
+            .withUsername(DEFAULT_USERNAME)
+            .withPassword(DEFAULT_PASSWORD)
+            .withDatabaseName(DEFAULT_DATABASE)
+            .withCommand(
+                "--default-authentication-plugin=" + AUTH_PLUGIN,
+                "--character-set-server=utf8mb4",
+                "--collation-server=utf8mb4_unicode_ci"
+            );
+    }
 
     protected AbstractCachingSha2PasswordTest() {
         super();
@@ -44,12 +87,24 @@ public abstract class AbstractCachingSha2PasswordTest extends AbstractAuthentica
     }
 
     @Override
-    protected String getMySqlVersion() {
-        return MYSQL_VERSION;
+    protected MySQLContainer<?> getContainer() {
+        return CONTAINER;
     }
 
     @Override
-    protected String getAuthenticationPlugin() {
-        return AUTH_PLUGIN;
+    protected HikariDataSource getJdbcDataSource() {
+        return JDBC_DATASOURCE;
+    }
+
+    /**
+     * Create a MySQL user with caching_sha2_password authentication.
+     * Convenience method that uses the correct auth plugin automatically.
+     *
+     * @param username the username
+     * @param password the password
+     * @throws SQLException if a database access error occurs
+     */
+    protected void createUser(String username, String password) throws SQLException {
+        createUser(username, password, AUTH_PLUGIN);
     }
 }
